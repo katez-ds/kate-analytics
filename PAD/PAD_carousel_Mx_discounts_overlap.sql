@@ -108,6 +108,7 @@ PAD_IND	MX_IND	ORDERS	PAD_DISCOUNT	MX_DISCOUNT_UPON_PAD
 0	1	353961210		6.351877167303
 1	0	44878790	1.731528773169	
 1	1	8411525	1.693999448376	5.870248874015
+    
 -- PAD orders with users clicked on PAD carousel (same day attribution)
 WITH pad_orders AS (           -- 1. identify PAD orders
     SELECT
@@ -180,7 +181,202 @@ ORDERS	USERS
 5	2
 
 
+-- PAD Carousel CTR
+with impressions AS (
+select  
+count(distinct unified_consumer_events.user_id||event_timestamp::date) as num_viewed_cx
+from edw.consumer.unified_consumer_events
+where event_timestamp::date between date'2026-01-19' and date'2026-01-25'
+and event_name like '%card_view%'
+and (
+    (event_properties:container::string in ('merchandisingunit_component_store_carousel', 'merchandisingunit_component_store_carousel_uc') 
+and event_properties:container_id::string = '60e58852-64bb-49a4-be75-9f1ed482b487')
+or (event_properties:container_id::string = 'pad_gtm_v3_t1')
+)
+and platform != 'web'
+group by all
+)
+, clicks as (
+select  
+count(distinct unified_consumer_events.user_id||event_timestamp::date) as num_clicked_cx
+from edw.consumer.unified_consumer_events
+where event_timestamp::date between date'2026-01-19' and date'2026-01-25'
+and event_name like '%card_click%'
+and (
+    (event_properties:container::string in ('merchandisingunit_component_store_carousel', 'merchandisingunit_component_store_carousel_uc') 
+and event_properties:container_id::string = '60e58852-64bb-49a4-be75-9f1ed482b487')
+or (event_properties:container_id::string = 'pad_gtm_v3_t1')
+)
+and platform != 'web'
+group by all
+)
+select
+num_viewed_cx as "Impression",
+num_clicked_cx / num_viewed_cx as "CTR"
+from impressions
+cross join clicks
+
+Impression	CTR
+3006787	0.181031
+
+-- Mx Funded Stores on a given day (excl. ads)
+select --campaign_id, --entity_id as store_id, 
+case when lower(promo_title) like '%free item%' then 'Free Item'
+when lower(promo_title) like '%delivery fee%' then 'Delivery Fee: Set Value'
+when lower(promo_title) like '%off%items%' then 'Order Item: % Off'
+when lower(promo_title) like '%$%off%' or lower(incentive_value_type) like '%flat%' then 'Subtotal: Flat Amount Off'
+when lower(promo_title) like '%off%' then 'Subtotal: % Off'
+when lower(promo_title) like '%spend%save%' then 'Subtotal: Flat Amount Off'
+when lower(promo_title) like '%buy%get%' then 'BOGO'
+when lower(incentive_target_type) like  '%subtotal%' and lower(incentive_value_type) like '%percent%' then 'Subtotal: % Off'
+when lower(incentive_target_type) like  '%item%' and lower(incentive_value_type) like '%percent%' then 'Order Item: % Off'
+when lower(incentive_target_type) like  '%item%' and lower(incentive_value_type) like '%set%' then 'Order Item: Set Value'
+when lower(incentive_target_type) like  '%delivery%' and lower(incentive_value_type) like '%set%' then 'Delivery Fee: Set Value'
+else incentive_target_type end campaign_type,
+count(distinct entity_id) stores
+from
+proddb.public.fact_daily_ad_store_campaigns
+where TP = date'2026-01-19'
+and is_active_campaign = TRUE
+and is_merchant_funded = TRUE
+and PRODUCT_TYPE <> 'ad'
+group by 1
+order by 2 desc
+
+CAMPAIGN_TYPE	STORES
+Subtotal: % Off	194395
+Subtotal: Flat Amount Off	176204
+BOGO	110793
+Delivery Fee: Set Value	88219
+Order Item: % Off	84604
+INCENTIVE_TARGET_TYPE_SMART	82056
+Free Item	37685
+Order Item: Set Value	249
+Delivery: Set Value	0
+
+PRODUCT_TYPE	SUB_PRODUCT_TYPE	INCENTIVE_TARGET_TYPE	INCENTIVE_VALUE_TYPE	STORES
+ad	ad_sponsored_listing			498653
+promotion	promotion	INCENTIVE_TARGET_TYPE_SUBTOTAL	INCENTIVE_VALUE_TYPE_PERCENT_OFF	194644
+promotion	promotion	INCENTIVE_TARGET_TYPE_ORDER_ITEM	INCENTIVE_VALUE_TYPE_PERCENT_OFF	176322
+promotion	promotion	INCENTIVE_TARGET_TYPE_SUBTOTAL	INCENTIVE_VALUE_TYPE_FLAT_AMOUNT_OFF	175279
+ad	ad_homepage_banner			102304
+promotion	promotion	INCENTIVE_TARGET_TYPE_DELIVERY_FEE	INCENTIVE_VALUE_TYPE_SET_VALUE	88219
+promotion	promotion	INCENTIVE_TARGET_TYPE_SMART		82056
+promotion	promotion	INCENTIVE_TARGET_TYPE_ORDER_ITEM	INCENTIVE_VALUE_TYPE_SET_VALUE	1770
+promotion	promotion			1
+
+select
+count(distinct entity_id) stores
+from
+proddb.public.fact_daily_ad_store_campaigns
+where TP = date'2026-01-19'
+and is_active_campaign = TRUE
+and is_merchant_funded = TRUE
+and PRODUCT_TYPE <> 'ad'
+
+495338
+
+-- Pad Carousel vs Mx Eligible Store
+with pad_carousel_eligible as
+(SELECT 
+    f.value AS store_id
+    --,IGUAZU_PARTITION_DATE pad_dt
+FROM IGUAZU.SERVER_EVENTS_PRODUCTION.discount_candidates_event_ice,
+    LATERAL FLATTEN(input => ELIGIBLE_CANDIDATES) f
+WHERE IGUAZU_PARTITION_DATE = '2026-01-19'  -- Replace with your desired date (format: YYYY-MM-DD)
+group by 1)
+,
+mx_discount as
+(select entity_id
+from
+proddb.public.fact_daily_ad_store_campaigns
+where TP = date'2026-01-19'
+and is_active_campaign = TRUE
+and is_merchant_funded = TRUE
+and PRODUCT_TYPE<> 'ad'
+group by 1
+)
+select 
+case when store_id is not null and entity_id is null then 'PAD Only'
+when store_id is null and entity_id is not null then 'Mx Only'
+when store_id is not null and entity_id is not null then 'PAD + Mx'
+end cohort,
+count(*) orders
+from pad_carousel_eligible p
+full outer join mx_discount m
+on p.store_id = m.entity_id
+group by 1
+
+COHORT      orders
+PAD Only	281690
+PAD + Mx	248075
+Mx Only	247264
+
+-- Mx Orders and $Discounts by Campaign Type
+-- Query to identify which merchants are on promos, promo type, and daily Mx-funded CX discounts
+WITH daily_mx_discounts AS (
+    -- Calculate daily Mx-funded CX discounts from FPOR
+    SELECT
+        --fpor.delivery_active_date,
+        --fpor.store_id,
+        fpor.campaign_id,
+        COUNT(DISTINCT fpor.delivery_id) AS orders,
+        SUM(fpor.discount_subsidy_usd / 100.0) AS total_cx_discount_usd
+    FROM edw.ads.fact_promo_order_redemption fpor
+    WHERE fpor.delivery_active_date between date'2026-01-19' and date'2026-01-25'  -- Adjust date range
+        AND fpor.sub_transaction_funding_entity_type = 'SUB_TRANSACTION_FUNDED_ENTITY_TYPE_MERCHANT'
+        AND fpor.fee_inducing_entity_type = 'BILLABLE_EVENT_ENTITY_ID_TYPE_CAMPAIGN'
+    GROUP BY 1
+),
+campaign_metadata AS (
+select campaign_id, --entity_id as store_id, 
+case when lower(promo_title) like '%free item%' then 'Free Item'
+when lower(promo_title) like '%delivery fee%' then 'Delivery Fee: Set Value'
+when lower(promo_title) like '%off%items%' then 'Order Item: % Off'
+when lower(promo_title) like '%$%off%' or lower(incentive_value_type) like '%flat%' then 'Subtotal: Flat Amount Off'
+when lower(promo_title) like '%off%' then 'Subtotal: % Off'
+when lower(promo_title) like '%spend%save%' then 'Subtotal: Flat Amount Off'
+when lower(promo_title) like '%buy%get%' then 'BOGO'
+when lower(incentive_target_type) like  '%subtotal%' and lower(incentive_value_type) like '%percent%' then 'Subtotal: % Off'
+when lower(incentive_target_type) like  '%item%' and lower(incentive_value_type) like '%percent%' then 'Order Item: % Off'
+when lower(incentive_target_type) like  '%item%' and lower(incentive_value_type) like '%set%' then 'Order Item: Set Value'
+when lower(incentive_target_type) like  '%delivery%' and lower(incentive_value_type) like '%set%' then 'Delivery Fee: Set Value'
+else incentive_value_type end campaign_type,
+--concat(incentive_target_type, incentive_value_type),
+promo_title
+from
+proddb.public.fact_daily_ad_store_campaigns
+where 1=1
+--and TP between date'2026-01-19' and date'2026-01-25'
+and is_active_campaign = TRUE
+and is_merchant_funded = TRUE
+--and PRODUCT_TYPE<> 'ad'
+group by all
+)
+-- Final output: Stores on promos with daily discount amounts
+SELECT
+    cm.campaign_type,--promo_title,
+    sum(dmd.orders) orders,
+    sum(dmd.total_cx_discount_usd) total_cx_discount_usd,
+    round(sum(dmd.total_cx_discount_usd)/sum(dmd.orders),4) avg_cx_discount_per_order
+FROM daily_mx_discounts dmd
+LEFT JOIN campaign_metadata cm
+    ON cm.campaign_id = dmd.campaign_id
+    --AND cm.store_id = dmd.store_id
+    --AND cm.active_date = dmd.delivery_active_date
+--LEFT JOIN proddb.public.dimension_store ds
+    --ON ds.store_id = dmd.store_id
+group by 1
+order by 2 desc
 
 
-
-
+CAMPAIGN_TYPE	ORDERS	TOTAL_CX_DISCOUNT_USD	AVG_CX_DISCOUNT_PER_ORDER
+	2873331	19025257.670000	6.6213
+BOGO	2166060	20159323.290000	9.3069
+Subtotal: Flat Amount Off	1387454	7053268.940000	5.0836
+Order Item: % Off	1381190	7135940.740000	5.1665
+Subtotal: % Off	1261413	6947167.440000	5.5074
+Free Item	1136606	7940483.740000	6.9861
+Delivery Fee: Set Value	153339	389256.410000	2.5385
+Delivery: Set Value	10980	17411.640000	1.5858
+Order Item: Set Value	47	128.360000	2.7311
