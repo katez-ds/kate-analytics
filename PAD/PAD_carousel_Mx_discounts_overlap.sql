@@ -313,20 +313,41 @@ PAD + Mx	248075
 Mx Only	247264
 
 -- Mx Orders and $Discounts by Campaign Type
+
 -- Query to identify which merchants are on promos, promo type, and daily Mx-funded CX discounts
-WITH daily_mx_discounts AS (
+with dd as 
+(select dd.delivery_id
+    FROM proddb.public.dimension_deliveries dd
+    LEFT JOIN edw.cng.dimension_new_vertical_store_tags nv 
+            ON dd.store_id = nv.store_id AND nv.is_filtered_mp_vertical = 1
+    WHERE dd.is_filtered_core = TRUE
+        -- AND dd.is_consumer_pickup = FALSE -- optional to exclude pickup orders
+        AND dd.fulfillment_type NOT IN ('dine_in', 'shipping', 'merchant_fleet', 'virtual') -- excluding dine-in, shipping, merchant fleet, and virtual orders (giftcards)
+        AND dd.is_from_store_to_us = FALSE -- excluding store-to-us orders
+        AND dd.is_bundle_order = FALSE -- excluding bundle orders -- an optional column to filter out DoubleDash
+        AND nv.business_line IS NULL -- excluding non-restaurant orders -- an optional column to exclude NV
+        AND dd.country_id = 1 -- US only 
+        AND cast(created_at as date) between date'2026-01-19' and date'2026-01-25'
+        AND is_subscribed_consumer = FALSE
+    group by 1) 
+,
+
+daily_mx_discounts AS (
     -- Calculate daily Mx-funded CX discounts from FPOR
     SELECT
         --fpor.delivery_active_date,
         --fpor.store_id,
         fpor.campaign_id,
+        case when x.management_type IN ('ENTERPRISE', 'MID MARKET') then 0 else 1 end as smb_flag,
         COUNT(DISTINCT fpor.delivery_id) AS orders,
         SUM(fpor.discount_subsidy_usd / 100.0) AS total_cx_discount_usd
     FROM edw.ads.fact_promo_order_redemption fpor
+    join dd on fpor.delivery_id = dd.delivery_id
+    LEFT JOIN proddb.public.dimension_store_ext x ON fpor.store_id = x.store_id
     WHERE fpor.delivery_active_date between date'2026-01-19' and date'2026-01-25'  -- Adjust date range
         AND fpor.sub_transaction_funding_entity_type = 'SUB_TRANSACTION_FUNDED_ENTITY_TYPE_MERCHANT'
         AND fpor.fee_inducing_entity_type = 'BILLABLE_EVENT_ENTITY_ID_TYPE_CAMPAIGN'
-    GROUP BY 1
+    GROUP BY 1,2
 ),
 campaign_metadata AS (
 select campaign_id, --entity_id as store_id, 
@@ -355,6 +376,7 @@ group by all
 )
 -- Final output: Stores on promos with daily discount amounts
 SELECT
+    --smb_flag,
     cm.campaign_type,--promo_title,
     sum(dmd.orders) orders,
     sum(dmd.total_cx_discount_usd) total_cx_discount_usd,
@@ -369,14 +391,109 @@ LEFT JOIN campaign_metadata cm
 group by 1
 order by 2 desc
 
-
 CAMPAIGN_TYPE	ORDERS	TOTAL_CX_DISCOUNT_USD	AVG_CX_DISCOUNT_PER_ORDER
-	2873331	19025257.670000	6.6213
-BOGO	2166060	20159323.290000	9.3069
-Subtotal: Flat Amount Off	1387454	7053268.940000	5.0836
-Order Item: % Off	1381190	7135940.740000	5.1665
-Subtotal: % Off	1261413	6947167.440000	5.5074
-Free Item	1136606	7940483.740000	6.9861
-Delivery Fee: Set Value	153339	389256.410000	2.5385
-Delivery: Set Value	10980	17411.640000	1.5858
-Order Item: Set Value	47	128.360000	2.7311
+	599041	3981042.510000	6.6457
+BOGO	446185	4140789.910000	9.2804
+Subtotal: Flat Amount Off	401962	1866092.150000	4.6425
+Subtotal: % Off	313274	1744610.940000	5.5690
+Free Item	250699	1792019.990000	7.1481
+Delivery Fee: Set Value	125457	316934.500000	2.5262
+Order Item: % Off	122772	703090.540000	5.7268
+Order Item: Set Value	9	24.950000	2.7722
+
+
+-- Mx Discount Orders: SMB vs ENT
+
+-- Query to identify which merchants are on promos, promo type, and daily Mx-funded CX discounts
+with dd as 
+(select dd.delivery_id
+    FROM proddb.public.dimension_deliveries dd
+    LEFT JOIN edw.cng.dimension_new_vertical_store_tags nv 
+            ON dd.store_id = nv.store_id AND nv.is_filtered_mp_vertical = 1
+    WHERE dd.is_filtered_core = TRUE
+        -- AND dd.is_consumer_pickup = FALSE -- optional to exclude pickup orders
+        AND dd.fulfillment_type NOT IN ('dine_in', 'shipping', 'merchant_fleet', 'virtual') -- excluding dine-in, shipping, merchant fleet, and virtual orders (giftcards)
+        AND dd.is_from_store_to_us = FALSE -- excluding store-to-us orders
+        AND dd.is_bundle_order = FALSE -- excluding bundle orders -- an optional column to filter out DoubleDash
+        AND nv.business_line IS NULL -- excluding non-restaurant orders -- an optional column to exclude NV
+        AND dd.country_id = 1 -- US only 
+        AND cast(created_at as date) between date'2026-01-19' and date'2026-01-25'
+        AND is_subscribed_consumer = FALSE
+    group by 1) 
+,
+
+daily_mx_discounts AS (
+    -- Calculate daily Mx-funded CX discounts from FPOR
+    SELECT
+        --fpor.delivery_active_date,
+        --fpor.store_id,
+        fpor.campaign_id,
+        case when x.management_type IN ('ENTERPRISE', 'MID MARKET') then 0 else 1 end as smb_flag,
+        COUNT(DISTINCT fpor.delivery_id) AS orders,
+        SUM(fpor.discount_subsidy_usd / 100.0) AS total_cx_discount_usd
+    FROM edw.ads.fact_promo_order_redemption fpor
+    join dd on fpor.delivery_id = dd.delivery_id
+    LEFT JOIN proddb.public.dimension_store_ext x ON fpor.store_id = x.store_id
+    WHERE fpor.delivery_active_date between date'2026-01-19' and date'2026-01-25'  -- Adjust date range
+        AND fpor.sub_transaction_funding_entity_type = 'SUB_TRANSACTION_FUNDED_ENTITY_TYPE_MERCHANT'
+        AND fpor.fee_inducing_entity_type = 'BILLABLE_EVENT_ENTITY_ID_TYPE_CAMPAIGN'
+    GROUP BY 1,2
+),
+campaign_metadata AS (
+select campaign_id, --entity_id as store_id, 
+case when lower(promo_title) like '%free item%' then 'Free Item'
+when lower(promo_title) like '%delivery fee%' then 'Delivery Fee: Set Value'
+when lower(promo_title) like '%off%items%' then 'Order Item: % Off'
+when lower(promo_title) like '%$%off%' or lower(incentive_value_type) like '%flat%' then 'Subtotal: Flat Amount Off'
+when lower(promo_title) like '%off%' then 'Subtotal: % Off'
+when lower(promo_title) like '%spend%save%' then 'Subtotal: Flat Amount Off'
+when lower(promo_title) like '%buy%get%' then 'BOGO'
+when lower(incentive_target_type) like  '%subtotal%' and lower(incentive_value_type) like '%percent%' then 'Subtotal: % Off'
+when lower(incentive_target_type) like  '%item%' and lower(incentive_value_type) like '%percent%' then 'Order Item: % Off'
+when lower(incentive_target_type) like  '%item%' and lower(incentive_value_type) like '%set%' then 'Order Item: Set Value'
+when lower(incentive_target_type) like  '%delivery%' and lower(incentive_value_type) like '%set%' then 'Delivery Fee: Set Value'
+else incentive_value_type end campaign_type,
+--concat(incentive_target_type, incentive_value_type),
+promo_title
+from
+proddb.public.fact_daily_ad_store_campaigns
+where 1=1
+--and TP between date'2026-01-19' and date'2026-01-25'
+and is_active_campaign = TRUE
+and is_merchant_funded = TRUE
+--and PRODUCT_TYPE<> 'ad'
+group by all
+)
+-- Final output: Stores on promos with daily discount amounts
+SELECT
+    smb_flag,
+    cm.campaign_type,--promo_title,
+    sum(dmd.orders) orders,
+    sum(dmd.total_cx_discount_usd) total_cx_discount_usd,
+    round(sum(dmd.total_cx_discount_usd)/sum(dmd.orders),4) avg_cx_discount_per_order
+FROM daily_mx_discounts dmd
+LEFT JOIN campaign_metadata cm
+    ON cm.campaign_id = dmd.campaign_id
+    --AND cm.store_id = dmd.store_id
+    --AND cm.active_date = dmd.delivery_active_date
+--LEFT JOIN proddb.public.dimension_store ds
+    --ON ds.store_id = dmd.store_id
+group by 1,2
+order by 1,3 desc
+
+SMB_FLAG	CAMPAIGN_TYPE	ORDERS	TOTAL_CX_DISCOUNT_USD	AVG_CX_DISCOUNT_PER_ORDER
+0	BOGO	300190	2387955.480000	7.9548
+0	Subtotal: Flat Amount Off	298154	1345601.420000	4.5131
+0	Free Item	246598	1761046.090000	7.1414
+0		244058	1560427.910000	6.3937
+0	Subtotal: % Off	148115	800165.920000	5.4023
+0	Order Item: % Off	39419	181584.360000	4.6065
+0	Delivery Fee: Set Value	38512	123292.460000	3.2014
+1		354983	2420614.600000	6.8190
+1	Subtotal: % Off	165159	944445.020000	5.7184
+1	BOGO	145995	1752834.430000	12.0061
+1	Subtotal: Flat Amount Off	103808	520490.730000	5.0140
+1	Delivery Fee: Set Value	86945	193642.040000	2.2272
+1	Order Item: % Off	83353	521506.180000	6.2566
+1	Free Item	4101	30973.900000	7.5528
+1	Order Item: Set Value	9	24.950000	2.7722
