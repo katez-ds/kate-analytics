@@ -6,7 +6,7 @@ as
        else 'Treatment'
     end as tag_renamed 
     , try_cast(bucket_key as integer) as user_id
-    , exposure_time as exposed_dt
+    , exposure_time::date as exposed_dt
     from PRODDB.PUBLIC.FACT_DEDUP_EXPERIMENT_EXPOSURE
     where experiment_name = 'welcome-back-pricing-experiment'
     and experiment_version >= 7
