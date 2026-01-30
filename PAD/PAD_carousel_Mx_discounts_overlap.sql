@@ -108,6 +108,98 @@ PAD_IND	MX_IND	ORDERS	PAD_DISCOUNT	MX_DISCOUNT_UPON_PAD
 0	1	353961210		6.351877167303
 1	0	44878790	1.731528773169	
 1	1	8411525	1.693999448376	5.870248874015
+
+-- PAD + MX orders, by PSM
+
+with non_dp_delivery as
+(select dd.delivery_id, dd.creator_id user_id
+FROM proddb.public.dimension_deliveries dd
+LEFT JOIN edw.cng.dimension_new_vertical_store_tags nv 
+        ON dd.store_id = nv.store_id AND nv.is_filtered_mp_vertical = 1
+WHERE dd.is_filtered_core = TRUE
+        -- AND dd.is_consumer_pickup = FALSE -- optional to exclude pickup orders
+        AND dd.fulfillment_type NOT IN ('dine_in', 'shipping', 'merchant_fleet', 'virtual') -- excluding dine-in, shipping, merchant fleet, and virtual orders (giftcards)
+        AND dd.is_from_store_to_us = FALSE -- excluding store-to-us orders
+        AND dd.is_bundle_order = FALSE -- excluding bundle orders -- an optional column to filter out DoubleDash
+        AND nv.business_line IS NULL -- restaurant orders 
+        AND dd.country_id = 1 -- US only 
+        AND year(dd.created_at) =2025
+        AND is_subscribed_consumer = FALSE
+group by 1,2
+)
+,
+psm as
+(select consumer_id, cohort, prediction_datetime_est
+from
+proddb.public.cx_sensitivity_v2 psm 
+where year(psm.prediction_datetime_est::date) = 2025
+group by 1,2,3
+)
+
+select 
+cohort,
+count(distinct o.delivery_id) orders,
+avg(pad_df_promo_discount) PAD_discount,
+avg(mx_funded_cx_discount) Mx_discount_upon_PAD
+--delivery_id, pad_df_promo_discount, mx_funded_cx_discount
+from proddb.static.df_sf_promo_discount_delivery_level o
+join non_dp_delivery d
+    on o.delivery_id = d.delivery_id
+left join psm
+    ON d.user_id = psm.consumer_id 
+    AND psm.prediction_datetime_est::date = o.created_at::date
+where year(created_at) = 2025
+and pad_df_promo_discount > 0 
+and mx_funded_cx_discount>0
+group by 1
+order by 2 desc
+
+
+-- WBD + MX orders, by PSM
+
+with non_dp_delivery as
+(select dd.delivery_id, dd.creator_id user_id
+FROM proddb.public.dimension_deliveries dd
+LEFT JOIN edw.cng.dimension_new_vertical_store_tags nv 
+        ON dd.store_id = nv.store_id AND nv.is_filtered_mp_vertical = 1
+WHERE dd.is_filtered_core = TRUE
+        -- AND dd.is_consumer_pickup = FALSE -- optional to exclude pickup orders
+        AND dd.fulfillment_type NOT IN ('dine_in', 'shipping', 'merchant_fleet', 'virtual') -- excluding dine-in, shipping, merchant fleet, and virtual orders (giftcards)
+        AND dd.is_from_store_to_us = FALSE -- excluding store-to-us orders
+        AND dd.is_bundle_order = FALSE -- excluding bundle orders -- an optional column to filter out DoubleDash
+        AND nv.business_line IS NULL -- excluding non-restaurant orders -- an optional column to exclude NV
+        AND dd.country_id = 1 -- US only 
+        AND year(dd.created_at) =2025
+        AND is_subscribed_consumer = FALSE
+group by 1,2)
+,
+psm as
+(select consumer_id, cohort, prediction_datetime_est
+from
+proddb.public.cx_sensitivity_v2 psm 
+where year(psm.prediction_datetime_est::date) = 2025
+group by 1,2,3
+)
+
+select 
+cohort,
+count(distinct o.delivery_id) orders,
+avg(wbd_df_promo_discount) WBD_discount,
+avg(mx_funded_cx_discount) Mx_discount_upon_WBD
+--delivery_id, pad_df_promo_discount, mx_funded_cx_discount
+from proddb.static.df_sf_promo_discount_delivery_level o
+join non_dp_delivery d
+    on o.delivery_id = d.delivery_id
+left join psm
+    ON d.user_id = psm.consumer_id 
+    --AND year(psm.prediction_datetime_est::date) = 2025
+    AND psm.prediction_datetime_est::date = o.created_at::date
+where year(created_at) = 2025
+and wbd_df_promo_discount > 0 
+and mx_funded_cx_discount>0
+group by 1
+order by 2 desc
+
     
 -- PAD orders with users clicked on PAD carousel (same day attribution)
 WITH pad_orders AS (           -- 1. identify PAD orders
