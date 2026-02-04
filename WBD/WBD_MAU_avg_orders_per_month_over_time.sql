@@ -44,3 +44,24 @@ and order_dt between DATEADD(day,-30,first_eligible_dt) and DATEADD(day,180,firs
 where first_eligible_dt <= DATEADD(day,-180,date'2026-02-02')
 group by 1,2
 order by 1,2
+
+
+-- Control vs Treatment: MAU by months from first eligible
+
+select tag_renamed,
+case when DATEADD(day,-30,first_eligible_dt) <= order_dt AND order_dt < first_eligible_dt then -1
+  when first_eligible_dt <= order_dt AND order_dt < DATEADD(day,30,first_eligible_dt) then 1
+  when DATEADD(day,30,first_eligible_dt) <= order_dt AND order_dt < DATEADD(day,60,first_eligible_dt) then 2
+  when DATEADD(day,60,first_eligible_dt) <= order_dt AND order_dt < DATEADD(day,90,first_eligible_dt) then 3
+  when DATEADD(day,90,first_eligible_dt) <= order_dt AND order_dt < DATEADD(day,120,first_eligible_dt) then 4
+  when DATEADD(day,120,first_eligible_dt) <= order_dt AND order_dt < DATEADD(day,150,first_eligible_dt) then 5
+  when DATEADD(day,150,first_eligible_dt) <= order_dt AND order_dt < DATEADD(day,180,first_eligible_dt) then 6
+  end as eligible_month_n,
+count(distinct b.consumer_id) as users
+from proddb.katez.wbd_first_eligible_cohort a
+left join proddb.katez.consumer_orders b
+on a.consumer_id = b.consumer_id
+and order_dt between DATEADD(day,-30,first_eligible_dt) and DATEADD(day,180,first_eligible_dt)
+where first_eligible_dt <= DATEADD(day,-180,date'2026-02-02')
+group by 1,2
+order by 1,2
