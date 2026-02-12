@@ -60,7 +60,7 @@ from proddb.katez.wbd_first_eligible_cohort a
 left join proddb.katez.dp_paid_balance_0126 b
  on a.consumer_id=b.consumer_id
  and start_time::date between DATEADD(day,-30,first_eligible_dt) and DATEADD(day,360,first_eligible_dt)
-where first_eligible_dt <= DATEADD(day,-1080,date'2026-02-02')
+where first_eligible_dt <= DATEADD(day,-360,date'2026-02-02')
 group by 1,2
 order by 1,2
 
@@ -71,5 +71,5 @@ group by 1
 order by 1
 
 TAG_RENAMED	ELIGIBLE_CUSTOMERS
-Control	2470358
-Treatment	47151366
+Control	5793306
+Treatment	110097571
