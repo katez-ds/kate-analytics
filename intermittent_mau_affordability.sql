@@ -19,7 +19,7 @@ and ELIGIBILITY_STATUS = 'ELIGIBLE'
 group by 1
 )
 
-
+-- Note: PAD eligibility does not exclude DP users
 ,affordability_eligiliy as ( 
 -- WBD Cx eligible on a given date
 select  
