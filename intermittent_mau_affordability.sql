@@ -111,3 +111,39 @@ WHERE dd.is_filtered_core = TRUE
         AND is_subscribed_consumer = FALSE
 group by 1,2,3
 )
+        
+select min(L28D_weekly_orders), max(L28D_weekly_orders),
+min(L180D_weekly_orders), max(L180D_weekly_orders),
+min(ratio),max(ratio),
+min(diff), max(diff)
+from proddb.katez.intermittent_of_021226
+
+MIN(L28D_WEEKLY_ORDERS)	MAX(L28D_WEEKLY_ORDERS)	MIN(L180D_WEEKLY_ORDERS)	MAX(L180D_WEEKLY_ORDERS)	MIN(RATIO)	MAX(RATIO)	MIN(DIFF)	MAX(DIFF)
+0.000000	56.250000	0.000000	33.288892	0.000000000000	6.428635714929	-31.150000	46.061108
+        
+select 
+case when diff = 0 then '0'
+when diff > 0 and diff <5 then cast(ceil(diff) as varchar)
+when diff < 0 and diff >-5 then cast(floor(diff) as varchar)
+when diff>=5 then '>=5'
+when diff<=-5 then '<=-5'
+end delta,
+sum(intermittent_mau), sum(covered_by_affordability) 
+from proddb.katez.intermittent_of_021226
+group by 1
+order by 1
+
+DELTA	SUM(INTERMITTENT_MAU)	SUM(COVERED_BY_AFFORDABILITY)
+-1	28391716	27501035
+-2	343152	236236
+-3	61590	34538
+-4	18128	8471
+-5	7433	2764
+0	377	87
+1	12666139	11488720
+2	647970	384106
+3	114674	36440
+4	32682	7057
+5	12107	1919
+<=-5	6719	1754
+>=5	10349	1194
