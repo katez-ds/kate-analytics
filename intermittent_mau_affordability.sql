@@ -120,7 +120,8 @@ from proddb.katez.intermittent_of_021226
 
 MIN(L28D_WEEKLY_ORDERS)	MAX(L28D_WEEKLY_ORDERS)	MIN(L180D_WEEKLY_ORDERS)	MAX(L180D_WEEKLY_ORDERS)	MIN(RATIO)	MAX(RATIO)	MIN(DIFF)	MAX(DIFF)
 0.000000	56.250000	0.000000	33.288892	0.000000000000	6.428635714929	-31.150000	46.061108
-        
+
+-- By Order Frequency Delta (orders_per_week_last_28d - orders_per_week_last_180d）
 select 
 case when diff = 0 then '0'
 when diff > 0 and diff <5 then cast(ceil(diff) as varchar)
