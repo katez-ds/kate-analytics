@@ -40,3 +40,28 @@ end as tag_renamed
 from universal_be
 left join pad_be using (user_id)
 )
+
+select
+case when experiment_name = 'discount_engine_global_holdout_us' then 'DV A'
+  when experiment_name = 'discount_engine_fee_discounts_us' then 'DV B'
+  when experiment_name = 'discount_engine_deals_v1_us' then 'DV C'
+  else 'Others' end layer, tag, count(distinct try_cast(bucket_key as integer)) users
+from PRODDB.PUBLIC.FACT_DEDUP_EXPERIMENT_EXPOSURE
+where experiment_name --= 'discount_engine_deals_v1_us'
+in ('discount_engine_global_holdout_us','discount_engine_fee_discounts_us','discount_engine_deals_v1_us')
+      and experiment_version >= 2
+      and exposure_time >= '2026-02-19'
+      and segment = 'Users'
+group by 1,2
+order by 1,2
+
+LAYER	TAG	USERS
+DV A	control_1	767336
+DV A	control_2	770751
+DV A	control_3	768571
+DV A	control_4	770599
+DV A	control_5	769563
+DV A	treatment	82800079
+DV B	treatment	4184820
+DV B	treatment_wbd_only	220733
+DV C	treatment	3549832
