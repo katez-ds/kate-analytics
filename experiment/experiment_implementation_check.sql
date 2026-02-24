@@ -10,6 +10,7 @@ case when experiment_name = 'discount_engine_global_holdout_us' then 'DV A'
   when experiment_name = 'discount_engine_fee_discounts_us' then 'DV B'
   else 'DV C' end layer,
   experiment_name,
+  EXPERIMENT_VERSION version,
     case when tag like 'treatment_wbd_only%' or tag like 'control%' then 'Control' else 'Treatment' end as tag_renamed
   , try_cast(bucket_key as integer) as user_id
   , min(cast(EXPOSURE_TIME as date)) as first_exposed
@@ -39,19 +40,19 @@ where cast(a.created_at as date) >= '2026-02-19'
 group by 1,2,3
 )
 
-select layer, experiment_name, tag_renamed,
+select layer, experiment_name, version,tag_renamed,
 count(distinct a.user_id) exposed_users,
 count(distinct b.user_id) ordered_with_discount,
 count(distinct b.user_id)*1.0000/count(distinct a.user_id) share_of_users_with_discount_order,
 count(distinct b.delivery_id) discount_orders,
-sum(affordability_program_discount) affordability_program_discount,
-sum(wbd_discount) wbd_discount,
-sum(xs_discount) xs_discount,
-sum(pad_discount) pad_discount,
+--sum(affordability_program_discount) affordability_program_discount,
+--sum(wbd_discount) wbd_discount,
+--sum(xs_discount) xs_discount,
+--sum(pad_discount) pad_discount,
 sum(affordability_program_discount)*1.0000/count(distinct b.delivery_id) avg_affordability_discount,
-sum(wbd_discount)*1.0000/count(distinct b.delivery_id) avg_wbd_discount,
-sum(xs_discount)*1.0000/count(distinct b.delivery_id) avg_xs_discount,
-sum(pad_discount)*1.0000/count(distinct b.delivery_id) avg_pad_discount
+sum(wbd_discount)*1.0000/count(distinct case when wbd_discount>0 then b.delivery_id end) avg_wbd_discount,
+sum(xs_discount)*1.0000/count(distinct case when xs_discount>0 then b.delivery_id end) avg_xs_discount,
+sum(pad_discount)*1.0000/count(distinct case when pad_discount>0 then b.delivery_id end) avg_pad_discount
 from universal_be a
 left join discount_orders b
   on a.user_id = b.user_id and b.order_dt>= a.first_exposed
