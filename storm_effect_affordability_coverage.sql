@@ -45,7 +45,7 @@ New Cx
 
 
 -- User status cohort as of 2/25, and last order in storm submarkets
-create or replace table proddb.katez.store_cohort
+create or replace table proddb.katez.storm_cohort
 as 
 (
 with dp as
@@ -74,14 +74,15 @@ Select case when dp.consumer_id is not null then 'DP'
        --when ca.l28_orders >= 5 then 'RDP'
        when days_since_last_purchase < 29 then 'Active'
    end as segment,
-creator_id,
+ca.creator_id
 from proddb.mattheitz.mh_customer_authority ca
 left join dp on dp.consumer_id=ca.creator_id
 join public.dimension_deliveries dd  -- last order in storm submarkets
   on ca.creator_id = dd.creator_id
   and ca.prior_delivery_id = dd.delivery_id
   and dd.country_id = 1
-  and dd.submarket_id in ()  --need to update
+  and dd.submarket_id in (55,200,68,4,1898,1208,1071,1214,1060,884,800,894,892,827,629,1059,1193,86,85,864,1196,1194,1082,497,1137,879,810,829,581,1058,1081,1164,582,763,896,900,1130,2052,234,579,1687,84,577,1820,1073,77,796,811,1139,1262,9
+,73,1520,6111,7544,1251,9032,8,2225,883,7347,8510,8950,65,6003,8952,70,1390,1908,6108,8506,8623,320072,17,1203,6175,75,888,63,2085,5737,6002,6004,8953,8454,64,304,62,1521,6001,1610,5140,96,5758,765,899,1124,5,303,574,898,2224,5862,1202,134,1615,6548,8951,602,575,71,72,583,5170)  --need to update
 WHERE ca.dte = '2026-02-25'
 group by all
 )
@@ -125,6 +126,22 @@ from pad_eligible
 group by all
 )
 
+-- TAM: coverage by segment
+select segment, 
+count(distinct creator_id) users,
+count(distinct consumer_id)*1.0000/count(distinct creator_id) coverage
+from proddb.katez.storm_cohort a
+left join proddb.katez.affordability_eligiliy_022526 b
+on a.creator_id = b.consumer_id
+group by 1
+order by 2 desc
+
+SEGMENT	USERS	COVERAGE
+Churned	35317025	0.396740
+Active	5888281	0.642427
+DP	4660219	0.383731
+Dormant	3627933	0.906790
+New Cx	427730	0.544816
 	
 Select segment,
   count(distinct a.creator_id) users
