@@ -86,8 +86,22 @@ WHERE ca.dte = '2026-02-25'
 group by all
 )
 
+-- Affordability as of 2/25/26
 create or replace table proddb.katez.affordability_eligiliy_022526
 	 as ( 
+
+with pad_rank as (
+select consumer_id, ELIGIBILITY_STATUS, rank() over (partition by consumer_id order by LAST_UPDATED_AT desc) as rnk
+from EDW.PAD.affordability_incentive_iq_pad_eligibility_union 
+where LAST_UPDATED_AT::date <= date'2026-02-25'
+)
+, pad_eligible as (
+select consumer_id
+from pad_rank
+where rnk = 1
+and ELIGIBILITY_STATUS = 'ELIGIBLE'
+group by 1
+)
 -- WBD Cx eligible on a given date
 select  
 'wbd' as program, wbd.consumer_id
