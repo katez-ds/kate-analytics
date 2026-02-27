@@ -45,7 +45,7 @@ New Cx
 
 
 -- User status cohort as of 2/25, and last order in storm submarkets
-create table proddb.
+create or replace table proddb.katez.store_cohort
 as 
 (
 with dp as
@@ -86,7 +86,32 @@ WHERE ca.dte = '2026-02-25'
 group by all
 )
 
+create or replace table proddb.katez.affordability_eligiliy_022526
+	 as ( 
+-- WBD Cx eligible on a given date
+select  
+'wbd' as program, wbd.consumer_id
+from proddb.public.FACT_DYNAMIC_AUDIENCE_WBD_ORDER_FREQUENCY_L365D wbd
+left join proddb.public.cx_sensitivity_v2 psm on wbd.consumer_id = psm.consumer_id and prediction_datetime_est = injected_date
+where injected_date = date'2026-02-25'
+and prediction_datetime_est = date'2026-02-25'
+and not (cohort = 'p84d_active_very_insensitive' and L365D_ORDER_COUNT >= 13)
+and not (cohort = 'p84d_active_insensitive' and L365D_ORDER_COUNT >= 20)
+group by all
+-- XS Cx eligible on a given date
+union all
+select 'xs' as program, consumer_id
+from edw.pad.cross_shopper_daily_snapshot_cross_shopper_customer_v3_daily_snapshot
+where import_date = date'2026-02-25'
+group by all
+-- PAD Cx eligible on a given date
+union all
+select 'PAD' as program, consumer_id
+from pad_eligible
+group by all
+)
 
+	
 Select segment,
   count(distinct a.creator_id) users
 from user_cohort a
