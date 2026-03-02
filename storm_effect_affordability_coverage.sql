@@ -89,7 +89,7 @@ group by all
 )
 
 -- (Benchmark) User status cohort as of 2/25, and last order NOT in storm submarkets
-create or replace table proddb.katez.storm_cohort
+create or replace table proddb.katez.non_storm_cohort
 as 
 (
 with dp as
@@ -182,11 +182,11 @@ group by 1
 order by 2 desc
 
 SEGMENT	USERS	COVERAGE
-Churned	35317025	0.396740
-Active	5888281	0.642427
-DP	4660219	0.383731
-Dormant	3627933	0.906790
-New Cx	427730	0.544816
+Churned	79677109	0.427227
+Active	13955385	0.648154
+DP	10808285	0.401522
+Dormant	8391738	0.910070
+New Cx	971989	0.534932
 
 
 -- Storm Cohort: Order frequency pre post by Segment	
@@ -205,11 +205,70 @@ and is_filtered_core = true
 group by 1
 order by 2 desc
 
--- Non Storm Cohort: Order frequency pre post by Segment
+SEGMENT	USERS	PRE_OF	STORM_OF
+Churned	79677109	0.000000	0.000004
+Active	13955385	3.954714	4.765308
+DP	10808285	5.667090	5.582919
+Dormant	8391738	1.321342	0.159643
+New Cx	971989	0.000000	1.992656
 
+USERS	PRE_OF	STORM_OF
+113804506	1.120601	1.143367
+	
+-- Non Storm Cohort: Order frequency pre post by Segment
+Select --segment,
+count(distinct a.creator_id) users,
+count(distinct case when dd.created_at between '2025-12-18' AND '2026-01-21' then delivery_id end)*1.0000/count(distinct a.creator_id) pre_of,
+count(distinct case when dd.created_at between '2026-01-22' AND '2026-02-25' then delivery_id end)*1.0000/count(distinct a.creator_id) storm_of
+from proddb.katez.non_storm_cohort a
+--join visitors v on a.creator_id = v.user_id --only Cx visited during storm 35D
+left join proddb.public.dimension_deliveries dd --check order frequency
+ on a.creator_id = dd.creator_id and dd.created_at BETWEEN '2025-12-18' AND '2026-02-25'--'2025-12-18' AND '2026-01-21','2026-01-22' AND '2026-02-25'
+and dd.country_id = 1  
+and is_filtered_core = true  
+--and is_subscribed_consumer = false  
+--and is_consumer_pickup = FALSE
+--group by 1
+--order by 2 desc
+
+USERS	PRE_OF	STORM_OF
+89893844	1.048132	1.120379
+	
 -- Storm 35D visited users
 with visitors as
 (select user_id from proddb.public.fact_unique_visitors_full_utc
 where 1=1
 AND event_date between '2026-01-22' and '2026-02-25'
 AND experience = 'doordash')
+,
+user_of as
+(Select segment,
+a.creator_id,
+count(distinct case when dd.created_at between '2025-12-18' AND '2026-01-21' then delivery_id end)*1.0000/count(distinct a.creator_id) pre_of,
+count(distinct case when dd.created_at between '2026-01-22' AND '2026-02-25' then delivery_id end)*1.0000/count(distinct a.creator_id) storm_of
+from proddb.katez.storm_cohort a
+join visitors v on a.creator_id = v.user_id --only Cx visited during storm 35D
+left join proddb.public.dimension_deliveries dd --check order frequency
+ on a.creator_id = dd.creator_id and dd.created_at BETWEEN '2025-12-18' AND '2026-02-25'--'2025-12-18' AND '2026-01-21','2026-01-22' AND '2026-02-25'
+and dd.country_id = 1  
+and is_filtered_core = true  
+--and is_subscribed_consumer = false  
+--and is_consumer_pickup = FALSE
+group by all
+)
+select 
+segment,count(distinct creator_id) users,
+count(distinct consumer_id) eligible
+from user_of a
+left join proddb.katez.affordability_eligiliy_022526 b
+	on a.creator_id = b.consumer_id
+where pre_of > storm_of or storm_of = 0
+group by 1
+order by 2 desc
+
+SEGMENT	USERS	ELIGIBLE
+Churned	5371966	4738569
+Dormant	4063800	3654140
+DP	3910896	1353749
+Active	3773140	1745058
+New Cx	31636	77
