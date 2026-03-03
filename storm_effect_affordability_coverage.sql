@@ -361,6 +361,135 @@ WHERE ca.dte = '2026-02-25'
 group by all
 )
 	
+
+-- Break down WBD/XS/PAD Affordability as of 2/25/26
+create or replace table proddb.katez.WBD_affordability_eligiliy_022526
+	 as ( 
+/*
+with pad_rank as (
+select consumer_id, ELIGIBILITY_STATUS, rank() over (partition by consumer_id order by LAST_UPDATED_AT desc) as rnk
+from EDW.PAD.affordability_incentive_iq_pad_eligibility_union 
+where LAST_UPDATED_AT::date <= date'2026-02-25'
+)
+, pad_eligible as (
+select consumer_id
+from pad_rank
+where rnk = 1
+and ELIGIBILITY_STATUS = 'ELIGIBLE'
+group by 1
+)
+	*/
+-- WBD Cx eligible on a given date
+select  
+'wbd' as program, wbd.consumer_id
+from proddb.public.FACT_DYNAMIC_AUDIENCE_WBD_ORDER_FREQUENCY_L365D wbd
+left join proddb.public.cx_sensitivity_v2 psm on wbd.consumer_id = psm.consumer_id and prediction_datetime_est = injected_date
+where injected_date = date'2026-02-25'
+and prediction_datetime_est = date'2026-02-25'
+and not (cohort = 'p84d_active_very_insensitive' and L365D_ORDER_COUNT >= 13)
+and not (cohort = 'p84d_active_insensitive' and L365D_ORDER_COUNT >= 20)
+group by all
+/*
+-- XS Cx eligible on a given date
+union all
+select 'xs' as program, consumer_id
+from edw.pad.cross_shopper_daily_snapshot_cross_shopper_customer_v3_daily_snapshot
+where import_date = date'2026-02-25'
+group by all
+-- PAD Cx eligible on a given date
+union all
+select 'PAD' as program, consumer_id
+from pad_eligible
+group by all
+*/
+)
+
+create or replace table proddb.katez.xs_affordability_eligiliy_022526
+	 as ( 
+/*
+with pad_rank as (
+select consumer_id, ELIGIBILITY_STATUS, rank() over (partition by consumer_id order by LAST_UPDATED_AT desc) as rnk
+from EDW.PAD.affordability_incentive_iq_pad_eligibility_union 
+where LAST_UPDATED_AT::date <= date'2026-02-25'
+)
+, pad_eligible as (
+select consumer_id
+from pad_rank
+where rnk = 1
+and ELIGIBILITY_STATUS = 'ELIGIBLE'
+group by 1
+)
+
+-- WBD Cx eligible on a given date
+select  
+'wbd' as program, wbd.consumer_id
+from proddb.public.FACT_DYNAMIC_AUDIENCE_WBD_ORDER_FREQUENCY_L365D wbd
+left join proddb.public.cx_sensitivity_v2 psm on wbd.consumer_id = psm.consumer_id and prediction_datetime_est = injected_date
+where injected_date = date'2026-02-25'
+and prediction_datetime_est = date'2026-02-25'
+and not (cohort = 'p84d_active_very_insensitive' and L365D_ORDER_COUNT >= 13)
+and not (cohort = 'p84d_active_insensitive' and L365D_ORDER_COUNT >= 20)
+group by all
+union all
+	*/
+-- XS Cx eligible on a given date
+
+select 'xs' as program, consumer_id
+from edw.pad.cross_shopper_daily_snapshot_cross_shopper_customer_v3_daily_snapshot
+where import_date = date'2026-02-25'
+group by all
+/*
+-- PAD Cx eligible on a given date
+union all
+select 'PAD' as program, consumer_id
+from pad_eligible
+group by all
+*/
+)
+
+create or replace table proddb.katez.pad_affordability_eligiliy_022526
+	 as ( 
+
+with pad_rank as (
+select consumer_id, ELIGIBILITY_STATUS, rank() over (partition by consumer_id order by LAST_UPDATED_AT desc) as rnk
+from EDW.PAD.affordability_incentive_iq_pad_eligibility_union 
+where LAST_UPDATED_AT::date <= date'2026-02-25'
+)
+, pad_eligible as (
+select consumer_id
+from pad_rank
+where rnk = 1
+and ELIGIBILITY_STATUS = 'ELIGIBLE'
+group by 1
+)
+/*
+-- WBD Cx eligible on a given date
+select  
+'wbd' as program, wbd.consumer_id
+from proddb.public.FACT_DYNAMIC_AUDIENCE_WBD_ORDER_FREQUENCY_L365D wbd
+left join proddb.public.cx_sensitivity_v2 psm on wbd.consumer_id = psm.consumer_id and prediction_datetime_est = injected_date
+where injected_date = date'2026-02-25'
+and prediction_datetime_est = date'2026-02-25'
+and not (cohort = 'p84d_active_very_insensitive' and L365D_ORDER_COUNT >= 13)
+and not (cohort = 'p84d_active_insensitive' and L365D_ORDER_COUNT >= 20)
+group by all
+union all
+
+-- XS Cx eligible on a given date
+
+select 'xs' as program, consumer_id
+from edw.pad.cross_shopper_daily_snapshot_cross_shopper_customer_v3_daily_snapshot
+where import_date = date'2026-02-25'
+group by all
+union all
+	*/
+-- PAD Cx eligible on a given date
+
+select 'PAD' as program, consumer_id
+from pad_eligible
+group by all
+)
+
 with visitors as
 (select user_id from proddb.public.fact_unique_visitors_full_utc
 where 1=1
@@ -385,9 +514,19 @@ group by all
 )
 select 
 dp_ind,segment,count(distinct creator_id) users,
-count(distinct consumer_id) eligible
+count(distinct b.consumer_id) eligible,
+count(distinct c.consumer_id) wbd_eligible,
+count(distinct d.consumer_id) xs_eligible,
+count(distinct e.consumer_id) pad_eligible
 from user_of a
 left join proddb.katez.affordability_eligiliy_022526 b
 	on a.creator_id = b.consumer_id
+left join proddb.katez.wbd_affordability_eligiliy_022526 c
+	on a.creator_id = c.consumer_id
+left join proddb.katez.xs_affordability_eligiliy_022526 d
+	on a.creator_id = d.consumer_id
+left join proddb.katez.pad_affordability_eligiliy_022526 e
+	on a.creator_id = e.consumer_id
 where pre_of > storm_of or storm_of = 0
 group by all
+
