@@ -3,9 +3,9 @@ with dp as
 (select 
   consumer_id, dte
 FROM edw.consumer.fact_consumer_subscription__daily dsa
-LEFT JOIN
-  proddb.static.dashpass_annual_plan_ids b 
-  ON dsa.consumer_subscription_plan_id = b.consumer_subscription_plan_id
+--LEFT JOIN
+ -- proddb.static.dashpass_annual_plan_ids b 
+  --ON dsa.consumer_subscription_plan_id = b.consumer_subscription_plan_id
 where 1=1--is_new_subscription_date = TRUE
   and COUNTRY_ID_SUBSCRIBED_FROM = 1
   and dsa.consumer_subscription_plan_id != 10002416
@@ -326,9 +326,9 @@ with dp as
 (select 
   consumer_id, dte
 FROM edw.consumer.fact_consumer_subscription__daily dsa
-LEFT JOIN
-  proddb.static.dashpass_annual_plan_ids b 
-  ON dsa.consumer_subscription_plan_id = b.consumer_subscription_plan_id
+--LEFT JOIN
+  --proddb.static.dashpass_annual_plan_ids b 
+  --ON dsa.consumer_subscription_plan_id = b.consumer_subscription_plan_id
 where 1=1--is_new_subscription_date = TRUE
   and COUNTRY_ID_SUBSCRIBED_FROM = 1
   and dsa.consumer_subscription_plan_id != 10002416
@@ -348,8 +348,7 @@ case when ca.l28_orders between 1 and 2 then 'Active - Occasional'
 end segment,
 ca.creator_id
 from proddb.mattheitz.mh_customer_authority ca
-join dp on dp.consumer_id=ca.creator_id
-	and days_since_last_purchase < 29
+left join dp on dp.consumer_id=ca.creator_id
 join proddb.public.dimension_deliveries dd  -- last order in storm submarkets
   on ca.creator_id = dd.creator_id
   and ca.prior_delivery_id = dd.delivery_id
@@ -358,6 +357,7 @@ join proddb.public.dimension_deliveries dd  -- last order in storm submarkets
 ,73,1520,6111,7544,1251,9032,8,2225,883,7347,8510,8950,65,6003,8952,70,1390,1908,6108,8506,8623,320072,17,1203,6175,75,888,63,2085,5737,6002,6004,8953,8454,64,304,62,1521,6001,1610,5140,96,5758,765,899,1124,5,303,574,898,2224,5862,1202,134,1615,6548,8951,602,575,71,72,583,5170
 )  --need to update
 WHERE ca.dte = '2026-02-25'
+	and days_since_last_purchase < 29
 group by all
 )
 	
