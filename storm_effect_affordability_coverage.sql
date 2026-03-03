@@ -340,8 +340,8 @@ group by all
 )
 
 Select 
-case when dp.consumer_id is not null then 'DP'
-end as DP_ind,
+case when dp.consumer_id is not null then '1'
+	else '0' end as DP_ind,
 case when ca.l28_orders between 1 and 2 then 'Active - Occasional'
         when ca.l28_orders between 3 and 4 then 'Active - Habituating'
         when ca.l28_orders >= 5 then 'Active - RDP'
