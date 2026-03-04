@@ -84,20 +84,26 @@ order by 1
 -- For FMX orders with WBD discount, what's the distribution of WBD+XS discounts
 
 select
-  datediff(day, exposure_time, created_at) as days_since_exposure,
-  count(*) as total_fmx_orders,
-  avg(iff(wbd_xs_discount > 0, 1, 0)) as pct_with_wbd_xs_discount,
-  avg(iff(wbd_xs_discount = 0 and actual_df_paid = 0, 1, 0)) as pct_no_discount_and_no_df,
-
-  avg(wbd_xs_discount) as avg_wbd_xs_discount_overall,
-  avg(iff(wbd_xs_discount > 0, wbd_xs_discount, null)) as avg_wbd_xs_discount_when_discounted,
-  avg(iff(wbd_xs_discount > 0, actual_df_paid, null)) as avg_delivery_fee_when_discounted,
-
-  avg(actual_df_paid) as avg_df,
-  avg(iff(wbd_xs_discount = 0, actual_df_paid, null)) as avg_df_when_no_discount,
-  avg(iff(wbd_xs_discount = 0, iff(actual_df_paid = 0, 1, 0), null)) as pct_no_df_when_no_discount,
-
-from fmx_orders
+  case
+    when wbd_xs_discount > 0 and wbd_xs_discount <= 1 then '$0 ~ $1'
+    when wbd_xs_discount > 1 and wbd_xs_discount <= 2 then '$1 ~ $2'
+    when wbd_xs_discount > 2 and wbd_xs_discount <= 3 then '$2 ~ $3'
+    when wbd_xs_discount > 3 and wbd_xs_discount <= 4 then '$3 ~ $4'
+    when wbd_xs_discount > 4 and wbd_xs_discount <= 5 then '$4 ~ $5'
+    else '$5+'
+  end discount_amount,
+  count(distinct delivery_id) as total_orders
+from proddb.katez.fmx_orders
 where wbd_xs_discount>0
 group by 1
 order by 1
+
+select
+  sum(wbd_xs_discount) promo_spend,
+  count(distinct delivery_id) as total_orders,
+  sum(wbd_xs_discount)*1.0000/ count(distinct delivery_id) avg_promo_per_order
+from proddb.katez.fmx_orders
+where wbd_xs_discount>0
+
+PROMO_SPEND	TOTAL_ORDERS	AVG_PROMO_PER_ORDER
+3604805.510000	1578628	2.283505366686
