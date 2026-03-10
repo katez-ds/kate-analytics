@@ -1,10 +1,6 @@
 -- McDonald Biz ID 5579
 -- how much DD spends on McD's promo campaigns -- whether co-funded alongside the Mx or solely DD funded (i.e., Cx facing promos that get redeemed on McD's)
 
-sum(wbd_fee_promo_discount+cs_fee_promo_discount+pad_fee_promo_discount) affordability_program_discount,
-sum(mx_funded_cx_discount) mx_funded_discount,
-sum(crm_discount) crm_discount,
-
     
     select
     sum(wbd_fee_promo_discount+cs_fee_promo_discount+pad_fee_promo_discount) affordability_program_discount,
