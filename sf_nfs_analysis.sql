@@ -75,11 +75,11 @@ with core_delivery_data AS (
             WHEN nv.business_line IS NULL THEN 'Restaurant' 
             ELSE nv.business_line 
         END AS vertical_business_line --Restaurant, New Vertical classification
-        
+        /*        
         -- Quality metrics
         , fcdm.is_high_quality_delivery_mp
         , fcdm.is_20_min_late
-        /*
+    
         -- Timing metrics
         , dd.distinct_active_duration/3600.0 AS delivery_duration_hours
         , DATEDIFF('minute', dd.created_at, dd.actual_delivery_time) AS asap_minutes
