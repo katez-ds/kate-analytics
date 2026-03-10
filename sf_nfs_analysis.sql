@@ -21,10 +21,10 @@ with core_delivery_data AS (
         --, dd.bundle_order_role -- ‘primary_order’: Primary order if there’s a bundle order placed. ‘bundle_order’: DoubleDash child bundle order
         
         -- Distance metrics
-        , fdd.straightline_r2c_distance AS r2c_sl_meters
-        , fdd.ROAD_R2C_DISTANCE AS r2c_road_meters
+        --, fdd.straightline_r2c_distance AS r2c_sl_meters
+        --, fdd.ROAD_R2C_DISTANCE AS r2c_road_meters
         , fdd.straightline_r2c_distance/1609.34 AS r2c_sl_miles
-        , fdd.ROAD_R2C_DISTANCE/1609.34 AS r2c_road_miles
+        --, fdd.ROAD_R2C_DISTANCE/1609.34 AS r2c_road_miles
 
         , NTILE(10) OVER(PARTITION BY dd.submarket_id ORDER BY fdd.straightline_r2c_distance) AS distance_percentile
         
