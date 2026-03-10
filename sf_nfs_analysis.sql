@@ -6,7 +6,7 @@ with core_delivery_data AS (
         dd.delivery_id
         , dd.creator_id
         , dd.store_id
-        , dd.order_cart_id
+        --, dd.order_cart_id
         , dd.submarket_id
         , dd.submarket_name
         , dd.created_at
