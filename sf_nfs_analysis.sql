@@ -122,7 +122,7 @@ with core_delivery_data AS (
         , case when x.management_type IN ('ENTERPRISE', 'MID MARKET') then 0 else 1 end as smb_flag
 
     FROM proddb.public.dimension_deliveries dd
-    LEFT JOIN proddb.public.fact_delivery_allocation fda ON dd.delivery_id = fda.delivery_id
+    --LEFT JOIN proddb.public.fact_delivery_allocation fda ON dd.delivery_id = fda.delivery_id
     LEFT JOIN proddb.public.fact_delivery_distances fdd ON dd.delivery_id = fdd.delivery_id
     LEFT JOIN proddb.public.fact_core_delivery_metrics fcdm ON fcdm.delivery_id = dd.delivery_id
     LEFT JOIN edw.cng.dimension_new_vertical_store_tags nv 
