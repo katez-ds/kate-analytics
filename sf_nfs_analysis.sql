@@ -172,3 +172,39 @@ be as(
     group by all
     )
 
+with base as
+(select * from proddb.katez.nfs_vs_t4_orders_0326
+where VERTICAL_BUSINESS_LINE = 'Restaurant'
+and pickup = 0
+)
+
+select dashpass,--dashpass_eligible,mb_flag,
+   COUNT(DISTINCT delivery_id) AS orders,
+    COUNT(DISTINCT creator_id) AS consumers,
+
+    AVG(aov) AS avg_gov,
+    AVG(subtotal) AS avg_subtotal,
+        
+    AVG(df_discount_amount) AS avg_df_discount,
+    AVG(sf_discount_amount) AS avg_sf_discount,
+    AVG(WBD_df_promo_discount+cs_df_promo_discount+pad_fee_promo_discount) AS avg_affordability_discount,
+    AVG(total_fee_discount_amount) AS avg_total_fee_discount,
+    
+    AVG(gross_delivery_fee) AS avg_gross_df,
+    AVG(gross_service_fee) AS avg_gross_sf,
+
+    AVG(net_delivery_fee) AS avg_net_df,
+    AVG(net_service_fee) AS avg_net_sf,
+    --AVG(total_net_fees) AS avg_total_net_fee,
+
+    SUM(CASE WHEN df_discount_amount > 0 THEN 1 ELSE 0 END)::FLOAT / NULLIF(COUNT(*), 0) AS pct_with_df_discount,
+    SUM(CASE WHEN sf_discount_amount > 0 THEN 1 ELSE 0 END)::FLOAT / NULLIF(COUNT(*), 0) AS pct_with_sf_discount,
+    sum(df_discount_amount) / NULLIF(sum(gross_delivery_fee), 0) AS df_discount_rate,
+    sum(sf_discount_amount) / NULLIF(sum(gross_service_fee), 0) AS sf_discount_rate,
+    sum(total_fee_discount_amount) / NULLIF(sum(gross_delivery_fee+gross_service_fee), 0) fee_discount_rate,
+    sum(WBD_df_promo_discount+cs_df_promo_discount+pad_fee_promo_discount) / NULLIF(sum(gross_delivery_fee), 0) afforability_discount_rate,
+    SUM(CASE WHEN gross_delivery_fee > 0 THEN 1 ELSE 0 END)::FLOAT / NULLIF(COUNT(*), 0) AS pct_with_df,
+    SUM(CASE WHEN gross_service_fee > 0 THEN 1 ELSE 0 END)::FLOAT / NULLIF(COUNT(*), 0) AS pct_with_sf
+
+from base
+group by 1
