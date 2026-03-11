@@ -1,4 +1,4 @@
-
+create or replace table proddb.
 
 with core_delivery_data AS (
     SELECT 
@@ -137,8 +137,38 @@ with core_delivery_data AS (
         -- AND dd.is_bundle_order = FALSE -- excluding bundle orders -- an optional column to filter out DoubleDash
         -- AND vertical_business_line = 'Restaurant' -- excluding non-restaurant orders -- an optional column to exclude NV
         AND dd.country_id = 1 -- US only 
-        AND dd.created_at BETWEEN '2025-01-01' AND '2026-03-09'
-)
+        AND dd.created_at >= '2025-11-12' 
+),
 
-SELECT * 
-FROM core_delivery_data;
+be as(
+    select 
+    /*
+        case 
+            WHEN fde.tag in ('control') THEN 'Control'
+             else fde.tag
+             end as tag_renamed,
+    */
+        try_cast(fde.bucket_key as integer) as user_id 
+         , min(fde.exposure_time) as first_exposed
+        --, fde.experiment_version 
+        --, min(fde.exposure_time) as exposure_time
+    from 
+          PRODDB.PUBLIC.FACT_DEDUP_EXPERIMENT_EXPOSURE fde
+           inner join proddb.public.fact_unique_visitors_full_utc fuv
+          on try_to_Numeric(fde.bucket_key) = try_to_numeric(fuv.user_id)
+          and fde.exposure_time::date = fuv.event_date
+    where experiment_name = 'new_fee_structure_v4'
+        and experiment_version between 2 and 100
+        and exposure_time::Date >= '2025-11-12' 
+        and tag = 'treatment4'
+        -- and convert_timezone('UTC','America/Los_Angeles',exposure_time) between $start_time and $end_time
+        -- and (tag in ('control') or tag in ( ))
+        and bucket_key not in ('1505155093') --Exclude Dashmart re-stocking cx_id
+        and SEGMENT in ('Users')
+        and fuv.COUNTRY_NAME = 'United States'  -- United States
+        AND fuv.event_date >= '2025-11-12' 
+        AND fuv.user_id IS NOT NULL  -- Only signed-in users
+        AND fuv.UNIQUE_CORE_VISITOR = 1 
+    group by all
+    )
+
