@@ -255,7 +255,7 @@ and pickup = 0
 
 select dashpass,smb_flag,
     COUNT(DISTINCT delivery_id) AS orders,
-    
+    AVG(aov) AS gov,
     AVG(gross_delivery_fee) AS avg_gross_df,
     AVG(gross_service_fee) AS avg_gross_sf,
     AVG(gross_service_fee) * 1.0000/AVG(gross_delivery_fee) gross_sf_df_ratio,
@@ -295,7 +295,7 @@ CASE
     ELSE '12+  mi'
   END AS r2c_distance_segment,
     COUNT(DISTINCT delivery_id) AS orders,
-    
+    AVG(aOV) AS gov,
     AVG(gross_delivery_fee) AS avg_gross_df,
     AVG(gross_service_fee) AS avg_gross_sf,
     AVG(gross_service_fee) * 1.0000/AVG(gross_delivery_fee) gross_sf_df_ratio,
@@ -366,12 +366,12 @@ L365D_of as
 
 select dashpass,
     case
-    when L365D_orders <10 then '0-10'
-    when L365D_orders <20 then '10-20'
-    when L365D_orders <30 then '20-30'
-    when L365D_orders <40 then '30-40'
-    when L365D_orders <50 then '40-50'
-    else '50+'
+    when L365D_orders <20 then '0-20'
+    when L365D_orders <40 then '20-40'
+    when L365D_orders <60 then '40-60'
+    when L365D_orders <80 then '60-80'
+    when L365D_orders <100 then '80-100'
+    else '100+'
   end L365D_orders,
    COUNT(DISTINCT delivery_id) AS orders,
     AVG(gross_delivery_fee) AS avg_gross_df,
