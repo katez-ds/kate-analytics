@@ -172,6 +172,7 @@ be as(
     group by all
     )
 
+-- DashPass vs Classic
 with base as
 (select * from proddb.katez.nfs_vs_t4_orders_0326
 where VERTICAL_BUSINESS_LINE = 'Restaurant'
@@ -208,3 +209,66 @@ select dashpass,--dashpass_eligible,mb_flag,
 
 from base
 group by 1
+
+
+-- L365D OF, PSMv2, PSMv3
+
+with base as
+(select * from proddb.katez.nfs_vs_t4_orders_0326
+where VERTICAL_BUSINESS_LINE = 'Restaurant'
+and pickup = 0
+)
+,
+L365D_of as
+(select
+      creator_id user_id,L360_ORDERS L365D_orders,dte
+    from
+      proddb.mattheitz.mh_customer_authority
+    where
+      dte between '2025-11-12' and '2026-03-11'
+    group by all
+)
+
+select dashpass,
+    case
+    when L365D_orders between 0 and 4 then '0-4'
+    when L365D_orders between 5 and 10 then '5-10'
+    when L365D_orders between 11 and 12 then '11-12'
+    when L365D_orders between 13 and 16 then '13-16'
+    when L365D_orders between 17 and 19 then '17-19'
+    when L365D_orders between 20 and 29 then '20-29'
+    when L365D_orders > 30 then '30+'
+  end L365D_orders,
+   COUNT(DISTINCT delivery_id) AS orders,
+    COUNT(DISTINCT creator_id) AS consumers,
+
+    AVG(aov) AS avg_gov,
+    AVG(subtotal) AS avg_subtotal,
+        
+    AVG(df_discount_amount) AS avg_df_discount,
+    AVG(sf_discount_amount) AS avg_sf_discount,
+    AVG(WBD_df_promo_discount+cs_df_promo_discount+pad_fee_promo_discount) AS avg_affordability_discount,
+    AVG(total_fee_discount_amount) AS avg_total_fee_discount,
+    
+    AVG(gross_delivery_fee) AS avg_gross_df,
+    AVG(gross_service_fee) AS avg_gross_sf,
+
+    AVG(net_delivery_fee) AS avg_net_df,
+    AVG(net_service_fee) AS avg_net_sf,
+    --AVG(total_net_fees) AS avg_total_net_fee,
+
+    SUM(CASE WHEN df_discount_amount > 0 THEN 1 ELSE 0 END)::FLOAT / NULLIF(COUNT(*), 0) AS pct_with_df_discount,
+    SUM(CASE WHEN sf_discount_amount > 0 THEN 1 ELSE 0 END)::FLOAT / NULLIF(COUNT(*), 0) AS pct_with_sf_discount,
+    sum(df_discount_amount) / NULLIF(sum(gross_delivery_fee), 0) AS df_discount_rate,
+    sum(sf_discount_amount) / NULLIF(sum(gross_service_fee), 0) AS sf_discount_rate,
+    sum(total_fee_discount_amount) / NULLIF(sum(gross_delivery_fee+gross_service_fee), 0) fee_discount_rate,
+    sum(WBD_df_promo_discount+cs_df_promo_discount+pad_fee_promo_discount) / NULLIF(sum(gross_delivery_fee), 0) afforability_discount_rate,
+    SUM(CASE WHEN gross_delivery_fee > 0 THEN 1 ELSE 0 END)::FLOAT / NULLIF(COUNT(*), 0) AS pct_with_df,
+    SUM(CASE WHEN gross_service_fee > 0 THEN 1 ELSE 0 END)::FLOAT / NULLIF(COUNT(*), 0) AS pct_with_sf
+
+from base a
+    left join L365D_of b on a.creator_id = b.user_id
+      and b.dte = a.order_dt
+    --left join proddb.public.cx_sensitivity_v2 psm on a.user_id = psm.consumer_id and prediction_datetime_est = a.order_dt
+group by 1,2
+order by 1,2
