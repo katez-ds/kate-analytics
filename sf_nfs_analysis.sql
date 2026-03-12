@@ -171,7 +171,43 @@ be as(
         AND fuv.UNIQUE_CORE_VISITOR = 1 
     group by all
     )
+    
+-- SF Distribution
+with base as
+(select * from proddb.katez.nfs_vs_t4_orders_0326
+where VERTICAL_BUSINESS_LINE = 'Restaurant'
+and pickup = 0
+)
 
+select dashpass,--dashpass_eligible,mb_flag,
+    case
+    when gross_service_fee > 0
+    and gross_service_fee <= 1 then '$0 ~ $1'
+    when gross_service_fee > 1
+    and gross_service_fee <= 2 then '$1 ~ $2'
+    when gross_service_fee > 2
+    and gross_service_fee <= 3 then '$2 ~ $3'
+    when gross_service_fee > 3
+    and gross_service_fee <= 4 then '$3 ~ $4'
+    else '$4+'
+    end gross_services_fee,
+   COUNT(DISTINCT delivery_id) AS orders
+from base
+group by all
+order by 1,2
+
+DASHPASS	DISCOUNT_AMOUNT	ORDERS
+0	$0 ~ $1	8902
+0	$1 ~ $2	259577
+0	$2 ~ $3	1867557
+0	$3 ~ $4	1206562
+0	$4+	1959433
+1	$0 ~ $1	3926768
+1	$1 ~ $2	5509700
+1	$2 ~ $3	1994406
+1	$3 ~ $4	672146
+1	$4+	998781
+    
 -- DashPass vs Classic
 with base as
 (select * from proddb.katez.nfs_vs_t4_orders_0326
@@ -210,7 +246,106 @@ select dashpass,--dashpass_eligible,mb_flag,
 from base
 group by 1
 
+-- SMB vs ENT
+with base as
+(select * from proddb.katez.nfs_vs_t4_orders_0326
+where VERTICAL_BUSINESS_LINE = 'Restaurant'
+and pickup = 0
+)
 
+select dashpass,smb_flag,
+    COUNT(DISTINCT delivery_id) AS orders,
+    
+    AVG(gross_delivery_fee) AS avg_gross_df,
+    AVG(gross_service_fee) AS avg_gross_sf,
+    AVG(gross_service_fee) * 1.0000/AVG(gross_delivery_fee) gross_sf_df_ratio,
+
+    AVG(net_delivery_fee) AS avg_net_df,
+    AVG(net_service_fee) AS avg_net_sf,
+    AVG(net_service_fee) * 1.0000/AVG(net_delivery_fee) net_sf_df_ratio,
+
+    AVG(WBD_df_promo_discount+cs_df_promo_discount+pad_fee_promo_discount) AS avg_affordability_discount,
+
+    sum(WBD_df_promo_discount+cs_df_promo_discount+pad_fee_promo_discount) / NULLIF(sum(gross_delivery_fee), 0) afforability_discount_rate,
+    sum(total_fee_discount_amount) / NULLIF(sum(gross_delivery_fee+gross_service_fee), 0) fee_discount_rate
+from base
+group by all
+order by 1,2
+
+DASHPASS	SMB_FLAG	ORDERS	AVG_GROSS_DF	AVG_GROSS_SF	GROSS_SF_DF_RATIO	AVG_NET_DF	AVG_NET_SF	NET_SF_DF_RATIO	AVG_AFFORDABILITY_DISCOUNT	AFFORABILITY_DISCOUNT_RATE	FEE_DISCOUNT_RATE
+0	0	3538515	2.634332975839	3.782794474518	1.435959124838	1.870939693629	3.774237825755	2.017295286752	0.659072571404	0.250185750036	0.120295775360
+0	1	1763516	2.341511922772	4.759229556182	2.032545514672	1.772824907741	4.713854980618	2.658951236546	0.452443748738	0.193227181266	0.086478756277
+1	0	8454877	0.219960917232	1.612090210183	7.328984759973	0.177177437354	1.611544654050	9.095653928159	0.000145844818	0.000663048782	0.023650754167
+1	1	4646924	0.227118876917	2.200176572718	9.687334679460	0.197096505129	2.193664613409	11.129901121145	0.000094393625	0.000415613295	0.015051456180
+
+-- Order Distance
+with base as
+(select * from proddb.katez.nfs_vs_t4_orders_0326
+where VERTICAL_BUSINESS_LINE = 'Restaurant'
+and pickup = 0
+)
+
+select dashpass,
+CASE
+    WHEN r2c_sl_miles < 1 THEN '00-01 mi'
+    WHEN r2c_sl_miles < 3 THEN '01-03 mi'
+    WHEN r2c_sl_miles < 5 THEN '03-05 mi'
+    WHEN r2c_sl_miles < 8 THEN '05-08 mi'
+    WHEN r2c_sl_miles < 12 THEN '08-12 mi'
+    ELSE '12+  mi'
+  END AS r2c_distance_segment,
+    COUNT(DISTINCT delivery_id) AS orders,
+    
+    AVG(gross_delivery_fee) AS avg_gross_df,
+    AVG(gross_service_fee) AS avg_gross_sf,
+    AVG(gross_service_fee) * 1.0000/AVG(gross_delivery_fee) gross_sf_df_ratio,
+
+    AVG(net_delivery_fee) AS avg_net_df,
+    AVG(net_service_fee) AS avg_net_sf,
+    AVG(net_service_fee) * 1.0000/AVG(net_delivery_fee) net_sf_df_ratio,
+
+    AVG(WBD_df_promo_discount+cs_df_promo_discount+pad_fee_promo_discount) AS avg_affordability_discount,
+
+    sum(WBD_df_promo_discount+cs_df_promo_discount+pad_fee_promo_discount) / NULLIF(sum(gross_delivery_fee), 0) afforability_discount_rate,
+    sum(total_fee_discount_amount) / NULLIF(sum(gross_delivery_fee+gross_service_fee), 0) fee_discount_rate
+from base
+group by all
+order by 1,2
+
+-- GOV
+with base as
+(select * from proddb.katez.nfs_vs_t4_orders_0326
+where VERTICAL_BUSINESS_LINE = 'Restaurant'
+and pickup = 0
+)
+
+select dashpass,
+CASE
+    WHEN aov < 20 THEN '$0-20'
+    WHEN aov < 40 THEN '$20-40'
+    WHEN aov < 60 THEN '$40-60'
+    WHEN aov < 80 THEN '$60-80'
+    WHEN aov < 100 THEN '$80-100'
+    ELSE '$100+'
+  END AS gov_segment,
+    COUNT(DISTINCT delivery_id) AS orders,
+    
+    AVG(gross_delivery_fee) AS avg_gross_df,
+    AVG(gross_service_fee) AS avg_gross_sf,
+    AVG(gross_service_fee) * 1.0000/AVG(gross_delivery_fee) gross_sf_df_ratio,
+
+    AVG(net_delivery_fee) AS avg_net_df,
+    AVG(net_service_fee) AS avg_net_sf,
+    AVG(net_service_fee) * 1.0000/AVG(net_delivery_fee) net_sf_df_ratio,
+
+    AVG(WBD_df_promo_discount+cs_df_promo_discount+pad_fee_promo_discount) AS avg_affordability_discount,
+
+    sum(WBD_df_promo_discount+cs_df_promo_discount+pad_fee_promo_discount) / NULLIF(sum(gross_delivery_fee), 0) afforability_discount_rate,
+    sum(total_fee_discount_amount) / NULLIF(sum(gross_delivery_fee+gross_service_fee), 0) fee_discount_rate
+from base
+group by all
+order by 1,2
+    
 -- L365D OF, PSMv2, PSMv3
 
 with base as
