@@ -28,7 +28,7 @@ AFFORDABILITY_PROGRAM_DISCOUNT	MX_FUNDED_DISCOUNT	CRM_DISCOUNT
 66014232.640000	286931195.430000	35207169.713421703436
 
 
--- Diane's query
+-- Diane's query for CRM
 SELECT sum(coalesce(CASE WHEN sub_transaction_funding_entity_type IN ('SUB_TRANSACTION_FUNDED_ENTITY_TYPE_DOORDASH') THEN discount_subsidy_local END, 0)) / 100 AS doordash_funded_consumer_discount_local
 
 FROM proddb.public.dimension_deliveries AS b
