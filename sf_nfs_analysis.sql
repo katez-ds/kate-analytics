@@ -417,6 +417,7 @@ psm AS (
 select 
     cohort,
    COUNT(DISTINCT delivery_id) AS orders,
+    avg(aov) AS gov,
     AVG(gross_delivery_fee) AS avg_gross_df,
     AVG(gross_service_fee) AS avg_gross_sf,
     AVG(gross_service_fee) * 1.0000/AVG(gross_delivery_fee) gross_sf_df_ratio,
