@@ -434,3 +434,5 @@ from base a
     left join psm on a.user_id = psm.consumer_id and dte = a.order_dt
 group by 1
 order by 1
+
+
