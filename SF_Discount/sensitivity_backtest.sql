@@ -233,3 +233,56 @@ select
 from be
 left join public.dimension_deliveries dd on be.user_id = dd.creator_id and created_at::date between first_exposed::date - 365 and first_exposed::date - 1 and is_filtered_core = true
 group by all
+
+--LT DP Orders
+, comb as(
+select 
+  a.tag_renamed
+, a.user_id as consumer_id
+, a.first_exposed
+, dpa.consumer_id as dp_sign_up
+, case
+    when lifetime_dp_orders <= 10 then '1. <=10 Orders'
+    when lifetime_dp_orders <= 30 then '2. 11-30 Orders'
+    when lifetime_dp_orders <= 60 then '3. 31-60 Orders'
+    when lifetime_dp_orders <= 90 then '4. 61-90 Orders'
+    when lifetime_dp_orders <= 120 then '5. 91-120 Orders'
+    when lifetime_dp_orders > 120 then '6. > 120 Orders'
+  end as cohort
+, c.*
+from be a
+left join core_dd c on c.creator_id = a.user_id AND c.CREATED_AT >=  a.first_exposed
+left join dp_adoption dpa on a.user_id = dpa.consumer_id 
+)
+select 
+  cohort,
+  count(distinct case when tag_renamed = 'Control' then consumer_id end) as total_cx_c,
+  count(distinct case when tag_renamed = 'Treatment' then consumer_id end) as total_cx_t,
+  count(distinct case when tag_renamed = 'Control' then DELIVERY_ID end)  as "Volume Control",
+  count(distinct case when tag_renamed = 'Treatment' then DELIVERY_ID end)  as "Volume Treatment",
+  "Volume Control" / total_cx_c as "Order Rate Control",
+  "Volume Treatment" / total_cx_t as "Order Rate Treatment",
+  "Order Rate Treatment" / "Order Rate Control" - 1 as "OR Lift",
+  "Volume Treatment" - "Volume Control" * total_cx_t / total_cx_c as "Volume Impact", 
+  sum(case when tag_renamed = 'Treatment' then UE end) - sum(case when tag_renamed = 'Control' then UE end) * total_cx_t / total_cx_c as "VP Impact", 
+  - "VP Impact" / "Volume Impact" as "GPLO/CPIO",
+  sum(case when tag_renamed = 'Treatment' then gov/100.0 end) - sum(case when tag_renamed = 'Control' then gov/100.0 end) * total_cx_t / total_cx_c as "GOV Impact",
+  "GOV Impact" / (sum(case when tag_renamed = 'Control' then gov/100.0 end) * total_cx_t / total_cx_c) as "GOV Lift",
+  avg(case when tag_renamed = 'Control' then UE end) as "UE Control",
+  avg(case when tag_renamed = 'Treatment' then UE end) as "UE Treatment",
+  avg(case when tag_renamed = 'Control' then subtotal/100.0 end) as "Subtotal Control",
+  avg(case when tag_renamed = 'Treatment' then subtotal/100.0 end) as "Subtotal Treatment",
+  avg(case when tag_renamed = 'Control' then delivery_fee/100.0 end) as "Gross DF Control",
+  avg(case when tag_renamed = 'Treatment' then delivery_fee/100.0 end) as "Gross DF Treatment",
+  avg(case when tag_renamed = 'Control' then actual_sf_paid_by_cx end) as "Net SF Control",
+  avg(case when tag_renamed = 'Treatment' then actual_sf_paid_by_cx end) as "Net SF Treatment",
+  "Net SF Treatment" - "Net SF Control" as "Net SF Delta",
+  count(distinct case when tag_renamed = 'Control' then dp_sign_up end) / total_cx_c as "DP Signup Rate Control",
+  count(distinct case when tag_renamed = 'Treatment' then dp_sign_up end) / total_cx_t as "DP Signup Rate Treatment",
+  "DP Signup Rate Treatment" / "DP Signup Rate Control" - 1 as "DP Signup Lift",
+  "DP Signup Lift" / "Net SF Delta" as "DP Signup Sensitivity",
+  - "OR Lift" / "Net SF Delta" as "Price Sensitivity"
+from comb
+group by 1
+order by cohort
+;
