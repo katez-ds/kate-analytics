@@ -340,12 +340,12 @@ group by all
 select 
     be.*
   , count(distinct case when is_subscribed_consumer = true then delivery_id end) as lifetime_dp_orders
-  , count(distinct delivery_id) as l365d_of
+  , count(distinct case when created_at::date between first_exposed::date - 365 and first_exposed::date - 1 then delivery_id end) as l365d_of
   , count(distinct case when created_at::date between first_exposed::date - 84 and first_exposed::date - 1 then delivery_id end) as l84d_of
   , count(distinct case when created_at::date between first_exposed::date - 28 and first_exposed::date - 1 then delivery_id end) as l28d_of
-  , count(distinct case when is_subscribed_consumer = true then delivery_id end) as l365d_dp_of
+  , count(distinct case when is_subscribed_consumer = true and created_at::date between first_exposed::date - 365 and first_exposed::date - 1 then delivery_id end) as l365d_dp_of
 from exp_first_order_date be
-left join public.dimension_deliveries dd on be.user_id = dd.creator_id and created_at::date between first_exposed::date - 365 and first_exposed::date - 1 and is_filtered_core = true
+left join public.dimension_deliveries dd on be.user_id = dd.creator_id and created_at::date <= first_exposed::date - 1 and is_filtered_core = true
 group by all
 )
 , service_fee_promo_discounts as(    
@@ -419,7 +419,7 @@ select
     when l365d_of <= 20 then '4. 11-20 Orders'
     when l365d_of <= 30 then '5. 20-30 Orders'
     when l365d_of <= 60 then '6. 30-60 Orders'
-    when l365d_of > 60 then '7. >= 30 Orders'
+    when l365d_of > 60 then '7. >= 60 Orders'
   end as l365d_of_cohort
 , case
     when is_new_cx = 1 then '0. New Cx'
