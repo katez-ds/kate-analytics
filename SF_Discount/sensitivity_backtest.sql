@@ -1,3 +1,33 @@
+-- NFSv2 Experiment
+
+set exp_start_version = 26;
+set exp_end_version = 35;
+set start_date = '2025-03-25';
+set end_date = '2025-05-07';
+set exp_name = 'new_fee_structure_v1';
+select 
+   case 
+     when tag = 'control' then 'Control' 
+     else 'Treatment'
+     end 
+    as tag_renamed
+  , bucket_key as user_id 
+  , min(exposure_time) as first_exposed
+from PRODDB.PUBLIC.FACT_DEDUP_EXPERIMENT_EXPOSURE ee
+join edw.consumer.fact_consumer_subscription__daily dp on try_cast(ee.bucket_key as integer) = dp.consumer_id and dte::date = exposure_time::date - 1 and (is_in_trial_balance = true or (is_in_paid_balance = true and billing_period is not null)) -- DP Only
+where experiment_name = $exp_name
+  and experiment_version between $exp_start_version and $exp_end_version
+  and exposure_time between $start_date and $end_date
+  and (tag in ('control') or tag in (
+        'treatment1a', 'treatment1b', 'treatment2a', 'treatment2b'
+        , 'treatment3a', 'treatment3b', 'treatment4a', 'treatment4b'
+      ))
+ and bucket_key not in ('1505155093') --Exclude Dashmart re-stocking cx_id
+ and SEGMENT in ('Users')
+group by all
+ ;
+
+----------------------------
 set exp_start_version = 26;
 set exp_end_version = 72;
 set start_date = '2021-02-01';
@@ -194,3 +224,12 @@ from (
 )
 order by cohort
 ;
+
+-- p365d DP OF
+
+select 
+    be.*
+  , count(distinct case when is_subscribed_consumer = true then delivery_id end) as l365d_dp_of
+from be
+left join public.dimension_deliveries dd on be.user_id = dd.creator_id and created_at::date between first_exposed::date - 365 and first_exposed::date - 1 and is_filtered_core = true
+group by all
