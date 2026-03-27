@@ -339,12 +339,15 @@ group by all
 , be as (
 select 
     be.*
+ ,sum(case when is_subscribed_consumer = true and created_at::date between first_exposed::date - 28 and first_exposed::date - 1 then fee-delivery_fee+service_fee_no_dscnt-service_fee end) DP_savings_28D
+ ,sum(case when is_subscribed_consumer = true and created_at::date between first_exposed::date - 365 and first_exposed::date - 1 then fee-delivery_fee+service_fee_no_dscnt-service_fee end) DP_savings_365D
   , count(distinct case when is_subscribed_consumer = true then delivery_id end) as lifetime_dp_orders
   , count(distinct case when created_at::date between first_exposed::date - 365 and first_exposed::date - 1 then delivery_id end) as l365d_of
   , count(distinct case when created_at::date between first_exposed::date - 84 and first_exposed::date - 1 then delivery_id end) as l84d_of
   , count(distinct case when created_at::date between first_exposed::date - 28 and first_exposed::date - 1 then delivery_id end) as l28d_of
   , count(distinct case when is_subscribed_consumer = true and created_at::date between first_exposed::date - 365 and first_exposed::date - 1 then delivery_id end) as l365d_dp_of
-from exp_first_order_date be
+  , count(distinct case when is_subscribed_consumer = true and created_at::date between first_exposed::date - 84 and first_exposed::date - 1 then delivery_id end) as l84d_dp_of
+   from exp_first_order_date be
 left join public.dimension_deliveries dd on be.user_id = dd.creator_id and created_at::date <= first_exposed::date - 1 and is_filtered_core = true
 group by all
 )
@@ -412,7 +415,7 @@ select
 , a.first_exposed
 , dpa.consumer_id as dp_sign_up
 , case
-    when is_new_cx = 1 then '0. New Cx'
+    --when is_new_cx = 1 then '0. New Cx'
     when l365d_of = 0 then '1. O Order'
     when l365d_of <= 5 then '2. 1-5 Orders'
     when l365d_of <= 10 then '3. 6-10 Orders'
@@ -422,7 +425,7 @@ select
     when l365d_of > 60 then '7. >= 60 Orders'
   end as l365d_of_cohort
 , case
-    when is_new_cx = 1 then '0. New Cx'
+    --when is_new_cx = 1 then '0. New Cx'
     when l365d_dp_of = 0 then '1. O Order'
     when l365d_dp_of <= 5 then '2. 1-5 Orders'
     when l365d_dp_of <= 10 then '3. 6-10 Orders'
@@ -434,7 +437,7 @@ select
 from be a
 left join core_dd c on c.creator_id = a.user_id AND c.CREATED_AT >=  a.first_exposed
 left join dp_adoption dpa on a.user_id = dpa.consumer_id 
-where lifetime_dp_orders <= 60 --LT DP orders < 60
+where lifetime_dp_orders < 60 --LT DP orders < 60
 )
 
 
