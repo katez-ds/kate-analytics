@@ -1,3 +1,12 @@
+-- Cali SF Min
+set exp_start_version = 16;
+set exp_end_version = 20;
+set start_date = '2022-10-24'::date;
+set end_date = '2023-09-23'::date;
+set exp_name = 'small_order_fee_vs_service_fee_min_experiment';
+tag in ('cali_control_holdout','cali_treatment_dp_sf_min_control_to_150')
+
+
 -- NFSv2 Experiment
 
 set exp_start_version = 26;
@@ -433,6 +442,28 @@ select
     when l365d_dp_of <= 30 then '5. 20-30 Orders'
     when l365d_dp_of > 30 then '6. >= 30 Orders'
   end as l365d_dp_of_cohort
+, case
+    --when is_new_cx = 1 then '0. New Cx'
+    when DP_savings_365D = 0 then '1. $0'
+    when DP_savings_365D <= 500 then '2. $0-$5'
+    when DP_savings_365D <= 999 then '3. $5-$9.99'
+    when DP_savings_365D <= 2000 then '4. $9.99-$20'
+    when DP_savings_365D <= 4000 then '5. $20-$40'
+    when DP_savings_365D <= 6000 then '6. $40-$60'
+    when DP_savings_365D <= 9000 then '7. $60-$90'
+    when DP_savings_365D <= 12000 then '8. $90-$120'
+    when DP_savings_365D > 12000 then '9. $120+'
+  end as DP_savings_365D_cohort
+, case
+    --when is_new_cx = 1 then '0. New Cx'
+    when DP_savings_84D = 0 then '1. $0'
+    when DP_savings_84D <= 500 then '2. $0-$5'
+    when DP_savings_84D <= 999 then '3. $5-$9.99'
+    when DP_savings_84D <= 2000 then '4. $9.99-$20'
+    when DP_savings_84D <= 4000 then '5. $20-$40'
+    when DP_savings_84D <= 6000 then '6. $40-$60'
+    when DP_savings_84D > 6000 then '6. >$60'
+  end as DP_savings_84D_cohort
 , c.*
 from be a
 left join core_dd c on c.creator_id = a.user_id AND c.CREATED_AT >=  a.first_exposed
