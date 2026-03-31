@@ -35,6 +35,48 @@ FROM
 
 52236 * 4.7% = 2455
 
+with dp_signup as (
+  select 
+  SUBSCRIPTION_ID, 
+  START_TIME,
+  CASE WHEN is_in_intraday_trial_balance = true and is_new_subscription_date = true THEN 1 ELSE 0 END AS dashpass_trial_signup,
+  CASE WHEN is_in_intraday_pay_balance = true
+       and is_new_paying_subscription_date = true
+       and is_direct_to_pay_date = true
+       and billing_period is not null 
+  THEN 1 ELSE 0 END AS dashpass_dtp_signup,
+  dashpass_trial_signup + dashpass_dtp_signup AS dashpass_signup
+FROM edw.consumer.fact_consumer_subscription__daily dsa
+--LEFT JOIN
+  --proddb.static.dashpass_annual_plan_ids b ON dsa.consumer_subscription_plan_id = b.consumer_subscription_plan_id
+where is_new_subscription_date = TRUE
+  and COUNTRY_ID_SUBSCRIBED_FROM = 1
+  and dsa.consumer_subscription_plan_id != 10002416
+  and dsa.subscription_status != 'cancelled_subscription_creation_failed'
+  and dte between current_date - 30 and current_date
+  ),
+daily as (
+select START_TIME::date signup_dt, 
+sum(dashpass_trial_signup) dashpass_trial_signup,
+sum(dashpass_dtp_signup) dashpass_dtp_signup,
+sum(dashpass_signup) dashpass_signup
+from dp_signup
+group by all)
+select avg(dashpass_signup)
+from daily
+
+-- L30D
+DASHPASS_TRIAL_SIGNUP	DASHPASS_DTP_SIGNUP	DASHPASS_SIGNUP
+2147897	828614	2976511
+
+AVG(DASHPASS_SIGNUP)
+99217
+
+99217*4.7% = 4663
+
+
+
+
 -- Current US DashPass subscribers who are either in trial
 -- or within their first 3 paid months
 SELECT
