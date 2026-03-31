@@ -35,6 +35,8 @@ FROM
 
 52236 * 4.7% = 2455
 
+
+-- All DP signups (not new to DP)
 with dp_signup as (
   select 
   SUBSCRIPTION_ID, 
@@ -75,8 +77,6 @@ AVG(DASHPASS_SIGNUP)
 99217*4.7% = 4663
 
 
-
-
 -- Current US DashPass subscribers who are either in trial
 -- or within their first 3 paid months
 SELECT
@@ -114,3 +114,36 @@ WHERE
       )
     )
   );
+
+
+-- US DashPass subscribers as of 2026-03-30
+-- Includes consumers who are either:
+-- 1) currently in trial, or
+-- 2) currently active paid and in their first 3 paid months lifetime
+-- "first 3 paid months (lifetime)" is interpreted as billing_period IN (0, 1, 2)
+SELECT
+  COUNT(DISTINCT dsa.consumer_id) AS dashpass_subscribers_in_trial_or_first_3_paid_months_us
+FROM
+  edw.consumer.fact_consumer_subscription__daily AS dsa
+  INNER JOIN edw.consumer.dimension_consumer_subscription_plan AS sp ON dsa.consumer_subscription_plan_id = sp.consumer_subscription_plan_id
+WHERE
+  dsa.dte = '2026-03-30'
+  AND dsa.country_id_subscribed_from = 1
+  AND sp.plan_type = 'DASHPASS'
+  AND COALESCE(dsa.subscription_status, '') <> 'cancelled_subscription_creation_failed'
+  AND (
+    (
+      dsa.dynamic_subscription_status = 'active_trial'
+      AND dsa.is_in_trial_balance = TRUE
+    )
+    OR (
+      dsa.dynamic_subscription_status = 'active_paid'
+      AND dsa.is_in_paid_balance = TRUE
+      AND dsa.billing_period IN (0, 1, 2)
+    )
+  );
+
+7173508
+7173508*4.7% = 337155
+
+
