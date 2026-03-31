@@ -34,3 +34,41 @@ FROM
   ) d;
 
 52236 * 4.7% = 2455
+
+-- Current US DashPass subscribers who are either in trial
+-- or within their first 3 paid months
+SELECT
+  COUNT(DISTINCT dsa.consumer_id) AS dashpass_subscribers_in_trial_or_first_3_paid_months_us
+FROM
+  edw.consumer.fact_consumer_subscription__daily dsa
+  INNER JOIN edw.consumer.dimension_consumer_subscription_plan sp ON dsa.consumer_subscription_plan_id = sp.consumer_subscription_plan_id
+WHERE
+  dsa.dte = (
+    SELECT
+      MAX(dte)
+    FROM
+      edw.consumer.fact_consumer_subscription__daily
+    WHERE
+      dte <= CURRENT_DATE()
+  )
+  AND dsa.country_id_subscribed_from = 1
+  AND sp.plan_type = 'DASHPASS'
+  AND COALESCE(dsa.subscription_status, '') <> 'cancelled_subscription_creation_failed'
+  AND dsa.consumer_subscription_plan_id <> 10002416
+  AND (
+    (
+      dsa.dynamic_subscription_status = 'active_trial'
+      AND dsa.is_in_trial_balance = TRUE
+    )
+    OR (
+      dsa.dynamic_subscription_status = 'active_paid'
+      AND dsa.is_in_paid_balance = TRUE
+      AND dsa.billing_period IS NOT NULL
+      AND dsa.first_subscription_successful_charge_date IS NOT NULL
+      AND dsa.dte < DATEADD(
+        month,
+        3,
+        dsa.first_subscription_successful_charge_date
+      )
+    )
+  );
