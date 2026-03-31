@@ -32,3 +32,5 @@ FROM
     GROUP BY
       active_date
   ) d;
+
+52236 * 4.7% = 2455
