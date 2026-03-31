@@ -120,7 +120,7 @@ WHERE
 -- Includes consumers who are either:
 -- 1) currently in trial, or
 -- 2) currently active paid and in their first 3 paid months lifetime
--- "first 3 paid months (lifetime)" is interpreted as billing_period IN (0, 1, 2)
+-- "first 3 paid months (lifetime)" is interpreted as monthly_period IN (0, 1, 2)
 SELECT
   COUNT(DISTINCT dsa.consumer_id) AS dashpass_subscribers_in_trial_or_first_3_paid_months_us
 FROM
@@ -139,11 +139,30 @@ WHERE
     OR (
       dsa.dynamic_subscription_status = 'active_paid'
       AND dsa.is_in_paid_balance = TRUE
-      AND dsa.billing_period IN (0, 1, 2)
+      AND dsa.monthly_period IN (0, 1, 2)
     )
   );
 
-7173508
-7173508*4.7% = 337155
+7148174
+7148174*4.7% = 335964
+
+
+-- In first 90 days of DP
+with dp_tenure as
+(
+select consumer_id, 
+count(distinct dte) as tenure
+from edw.consumer.fact_consumer_subscription__daily dp 
+where (
+    (is_in_paid_balance = true and billing_period is not null) -- paid
+    or is_in_trial_balance = true -- trial
+    )
+group by all)
+select count(distinct consumer_id) 
+from dp_tenure
+where tenure<90 
+
+
+36266937
 
 
