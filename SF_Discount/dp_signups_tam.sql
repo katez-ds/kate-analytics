@@ -165,4 +165,64 @@ where tenure<90
 
 36266937
 
+-- Average daily US DashPass signups over the last 30 complete days
+SELECT
+  AVG(daily_signups) AS avg_daily_us_dashpass_signups_last_30d
+FROM
+  (
+    SELECT
+      active_date,
+      COUNT(DISTINCT subscription_id) AS daily_signups
+    FROM
+      edw.growth.fact_consumer_dashpass_signups
+    WHERE
+      active_date >= DATEADD(day, -30, CURRENT_DATE())
+      AND active_date < CURRENT_DATE()
+      AND country = 'United States'
+    GROUP BY
+      1
+  ) s
 
+80256
+
+-- Distinct US consumers with a DashPass signup event in the last 30/60/90 days
+-- who are still active on DashPass as of the latest available snapshot on or before today
+SELECT
+  COUNT(DISTINCT CASE
+    WHEN s.active_date BETWEEN DATEADD(day, -29, CURRENT_DATE()) AND CURRENT_DATE()
+    THEN s.consumer_id
+  END) AS active_dp_users_signed_up_last_30d_us,
+  COUNT(DISTINCT CASE
+    WHEN s.active_date BETWEEN DATEADD(day, -59, CURRENT_DATE()) AND CURRENT_DATE()
+    THEN s.consumer_id
+  END) AS active_dp_users_signed_up_last_60d_us,
+  COUNT(DISTINCT CASE
+    WHEN s.active_date BETWEEN DATEADD(day, -89, CURRENT_DATE()) AND CURRENT_DATE()
+    THEN s.consumer_id
+  END) AS active_dp_users_signed_up_last_90d_us
+FROM edw.growth.fact_consumer_dashpass_signups AS s
+INNER JOIN (
+  SELECT DISTINCT
+    dsa.consumer_id
+  FROM edw.consumer.fact_consumer_subscription__daily AS dsa
+  INNER JOIN edw.consumer.dimension_consumer_subscription_plan AS sp
+    ON dsa.consumer_subscription_plan_id = sp.consumer_subscription_plan_id
+  WHERE dsa.dte = (
+      SELECT MAX(dte)
+      FROM edw.consumer.fact_consumer_subscription__daily
+      WHERE dte <= CURRENT_DATE()
+    )
+    AND dsa.country_id_subscribed_from = 1
+    AND sp.plan_type = 'DASHPASS'
+    AND (
+      dsa.is_in_trial_balance = TRUE
+      OR dsa.is_in_paid_balance = TRUE
+    )
+    AND COALESCE(dsa.subscription_status, '') <> 'cancelled_subscription_creation_failed'
+) AS active_dp
+  ON s.consumer_id = active_dp.consumer_id
+WHERE s.country_id = 1
+  AND s.active_date BETWEEN DATEADD(day, -89, CURRENT_DATE()) AND CURRENT_DATE();
+
+ACTIVE_DP_USERS_SIGNED_UP_LAST_30D_US	ACTIVE_DP_USERS_SIGNED_UP_LAST_60D_US	ACTIVE_DP_USERS_SIGNED_UP_LAST_90D_US
+2030858	3855676	5114662
