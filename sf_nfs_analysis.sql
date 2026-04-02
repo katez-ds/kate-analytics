@@ -511,4 +511,6 @@ ORDERS	AVG_GROSS_SF	AVG_SUBTOTAL	AVG_GOV	AVG_UE
 
 
 Limiting to active subscribers who are in their trial and PM 1-3 (3/21 snapshot) and looking at their DP Rx Delivery orders in the following week:
-4.8M orders (20% of all DP) with Avg. Gross SF to be $1.7. If apply to 4.7% then one arm is 230K orders. If we apply 5c to each order than it's $11.5K
+4.8M orders (20% of all DP) with Avg. Gross SF to be $1.7. If apply to 4.7% then one arm is 230K orders. 
+- $1 depth per order on 20% DP --> 20c 
+- 50c depth per order on 20% DP --> 10c
