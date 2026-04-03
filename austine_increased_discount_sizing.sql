@@ -51,19 +51,14 @@ With all_users as(
       and dateadd(second, 600,coalesce(dsa.elected_time, dsa.start_time)) = event_date
       and dsa.consumer_subscription_plan_id != 10002416
       and dsa.subscription_status != 'cancelled_subscription_creation_failed'
+      and dsa.dynamic_subscription_status like 'active%'
     WHERE event_date between current_date - 28 and current_date  --use 4 week date range later
         and country_id = 1
         and DD_submarket_id = 38
+        and dsa.consumer_id is null
     group by 1
     )
- 
-  proddb.static.dashpass_annual_plan_ids b ON dsa.consumer_subscription_plan_id = b.consumer_subscription_plan_id
-where is_new_subscription_date = TRUE
-  and COUNTRY_ID_SUBSCRIBED_FROM = 1
-  and dsa.consumer_subscription_plan_id != 10002416
-  and dsa.subscription_status != 'cancelled_subscription_creation_failed'
-  and dte between $start_date::date - 7 and $end_date
-)   
+  
 , core_dd as(
     select dd.creator_id, dd.delivery_id, dd.created_at, dd.active_date
     from public.dimension_deliveries dd
@@ -72,7 +67,7 @@ where is_new_subscription_date = TRUE
         dd.created_at::date >= current_date - 28 --use 4 week date range later
         and country_id = 1
         and submarket_id = 38
-        and IS_SUBSCRIBED_CONSUMER is FALSE -- classic orders only
+        and IS_SUBSCRIBED_CONSUMER = FALSE -- classic orders only
     )
 
 , pen as(
