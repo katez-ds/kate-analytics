@@ -46,12 +46,24 @@ With all_users as(
     FROM proddb.public.fact_unique_visitors_full_UTC uv
     left join geo_intelligence.public.maindb_submarket ms on ms.id = uv.dd_submarket_id
     left join geo_intelligence.public.maindb_market mm on mm.id = ms.market_id
+    left join edw.consumer.fact_consumer_subscription__daily dsa
+      on uv.user_id=dsa.consumer_id
+      and dateadd(second, 600,coalesce(dsa.elected_time, dsa.start_time)) = event_date
+      and dsa.consumer_subscription_plan_id != 10002416
+      and dsa.subscription_status != 'cancelled_subscription_creation_failed'
     WHERE event_date between current_date - 28 and current_date  --use 4 week date range later
         and country_id = 1
         and DD_submarket_id = 38
     group by 1
     )
-    
+ 
+  proddb.static.dashpass_annual_plan_ids b ON dsa.consumer_subscription_plan_id = b.consumer_subscription_plan_id
+where is_new_subscription_date = TRUE
+  and COUNTRY_ID_SUBSCRIBED_FROM = 1
+  and dsa.consumer_subscription_plan_id != 10002416
+  and dsa.subscription_status != 'cancelled_subscription_creation_failed'
+  and dte between $start_date::date - 7 and $end_date
+)   
 , core_dd as(
     select dd.creator_id, dd.delivery_id, dd.created_at, dd.active_date
     from public.dimension_deliveries dd
