@@ -46,16 +46,10 @@ With all_users as(
     FROM proddb.public.fact_unique_visitors_full_UTC uv
     left join geo_intelligence.public.maindb_submarket ms on ms.id = uv.dd_submarket_id
     left join geo_intelligence.public.maindb_market mm on mm.id = ms.market_id
-    left join edw.consumer.fact_consumer_subscription__daily dsa
-      on uv.user_id=dsa.consumer_id
-      and dateadd(second, 600,coalesce(dsa.elected_time, dsa.start_time)) = event_date
-      and dsa.consumer_subscription_plan_id != 10002416
-      and dsa.subscription_status != 'cancelled_subscription_creation_failed'
-      and dsa.dynamic_subscription_status like 'active%'
     WHERE event_date between current_date - 28 and current_date  --use 4 week date range later
         and country_id = 1
         and DD_submarket_id = 38
-        and dsa.consumer_id is null
+        and IS_DASHPASS = 0 -- classic
     group by 1
     )
   
