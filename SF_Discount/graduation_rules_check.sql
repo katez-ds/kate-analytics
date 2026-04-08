@@ -98,7 +98,7 @@ select
 eligibility_flag, 
 case when L90D_DP_OF<20 then 1 else 0 end L90D_DP_OF_under_20,
 case when L90D_mx_orders<5 then 1 else 0 end L90D_mx_orders_under_5,
-case when L28D_DP_savings<20 then 1 else 0 end L28D_DP_savings_under_20,
+case when L28D_DP_savings<2000 then 1 else 0 end L28D_DP_savings_under_20,
 count(distinct delivery_id) orders,
 count(distinct creator_id) users
 from proddb.katez.tags
