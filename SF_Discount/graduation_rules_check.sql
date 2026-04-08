@@ -17,7 +17,7 @@ WHERE
     OR (
       dsa.dynamic_subscription_status = 'active_paid'
       AND dsa.is_in_paid_balance = TRUE
-      AND dsa.monthly_period IN (0, 1, 2)
+      AND dsa.monthly_period IN (0,1,2,3)
     )
   )
 group by all)
