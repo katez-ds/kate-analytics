@@ -57,7 +57,7 @@ dp_adoption as(
       c.*,
       L360_orders l365d_of,
       L84_orders l84d_of,
-      l28_orders,
+      l28_orders l28d_of,
       dpa.consumer_id as dp_sign_up
     from
       be a
@@ -244,7 +244,8 @@ select
     case
       when "Bucket" = 'Treatment' then "# Cx"
     end
-  ) over (partition by segment) as "DP Signup Gain"
+  ) over (partition by segment) as "DP Signup Gain",
+   - "GOV Delta" / nullif("DP Signup Gain", 0) as "GOV:DP Ratio"
 from pen 
 order by
   2,1
