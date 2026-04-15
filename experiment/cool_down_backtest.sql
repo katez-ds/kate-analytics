@@ -80,6 +80,16 @@ dp_adoption as(
     when l365d_of <= 60 then '6. 30-60 Orders'
     when l365d_of > 60 then '7. > 60 Orders'
     end as segment,
+  /*
+  case when l28d_of = 0 then '1. 0 Order'
+    when l28d_of <= 2 then '2. 0-2 Orders'
+    when l28d_of <= 4 then '3. 2-4 Orders'
+    when l28d_of <= 8 then '4. 4-8 Orders'
+    when l28d_of <= 12 then '5. 8-12 Orders'
+    when l28d_of <= 20 then '6. 12-16 Orders'
+    when l28d_of > 16 then '7. > 16 Orders'
+    end as segment,
+  */
     count(distinct consumer_id) as "# Cx",
       count(
         distinct case
