@@ -1,9 +1,14 @@
+
+-- DV A Control vs Treatment (limit to in old DV treatment)
 with
   be as (
     select
-      *
+      a.*
     from
-      static.us_universal_dv_a_be
+      static.us_universal_dv_a_be a
+      join proddb.static.wbd_experiment_exposure b --old DV in treatment
+            on a.user_id = b.user_id and b.tag_renamed = 'Treatment'
+  group by all
   ),
   core_dd as (
     select
