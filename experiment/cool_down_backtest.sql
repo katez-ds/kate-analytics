@@ -11,7 +11,7 @@ with
       join proddb.static.wbd_experiment_exposure b --old DV in treatment
             on a.user_id = b.user_id and b.tag_renamed = 'Treatment'
       join proddb.public.FACT_DYNAMIC_AUDIENCE_WBD_ORDER_FREQUENCY_L365D c
-        on injected_date = a.first_exposed::date and c.consumer_id = a.user_id
+        on injected_date = a.first_exposed::date and c.consumer_id = a.user_id and injected_date>='2026-03-12'
   group by all
   ),
   core_dd as (
@@ -277,7 +277,7 @@ with
       join proddb.static.wbd_experiment_exposure b --old DV in treatment
             on a.user_id = b.user_id and b.tag_renamed = 'Treatment'
       join proddb.public.FACT_DYNAMIC_AUDIENCE_WBD_ORDER_FREQUENCY_L365D c
-        on injected_date = a.first_exposed::date and c.consumer_id = a.user_id
+        on injected_date = a.first_exposed::date and c.consumer_id = a.user_id and injected_date>='2026-03-12'
   group by all
   ),
   core_dd as (
@@ -538,7 +538,7 @@ with
       join proddb.static.wbd_experiment_exposure b --old DV in treatment
             on a.user_id = b.user_id and b.tag_renamed = 'Treatment'
       join proddb.public.FACT_DYNAMIC_AUDIENCE_WBD_ORDER_FREQUENCY_L365D c
-        on injected_date = a.first_exposed::date and c.consumer_id = a.user_id
+        on injected_date = a.first_exposed::date and c.consumer_id = a.user_id and injected_date>='2026-03-12'
   group by all
   ),
   core_dd as (
@@ -799,7 +799,7 @@ with
       join proddb.static.wbd_experiment_exposure b --old DV in treatment
             on a.user_id = b.user_id and b.tag_renamed = 'Treatment'
       join proddb.public.FACT_DYNAMIC_AUDIENCE_WBD_ORDER_FREQUENCY_L365D c
-        on injected_date = a.first_exposed::date and c.consumer_id = a.user_id
+        on injected_date = a.first_exposed::date and c.consumer_id = a.user_id and injected_date>='2026-03-12'
   group by all
   ),
   core_dd as (
