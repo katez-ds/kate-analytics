@@ -11,7 +11,7 @@ with
       join proddb.static.wbd_experiment_exposure b --old DV in treatment
             on a.user_id = b.user_id and b.tag_renamed = 'Treatment'
       join proddb.public.FACT_DYNAMIC_AUDIENCE_WBD_ORDER_FREQUENCY_L365D c
-        on injected_date = first_exposed::date and c.consumer_id = a.user_id
+        on injected_date = a.first_exposed::date and c.consumer_id = a.user_id
   group by all
   ),
   core_dd as (
@@ -276,6 +276,8 @@ with
       static.us_universal_dv_a_be a
       join proddb.static.wbd_experiment_exposure b --old DV in treatment
             on a.user_id = b.user_id and b.tag_renamed = 'Treatment'
+      join proddb.public.FACT_DYNAMIC_AUDIENCE_WBD_ORDER_FREQUENCY_L365D c
+        on injected_date = a.first_exposed::date and c.consumer_id = a.user_id
   group by all
   ),
   core_dd as (
@@ -424,12 +426,14 @@ select
       when "Bucket" = 'Treatment' then "Gross Delivery Fee"
     end
   ) over (partition by segment) as "Gross Delivery Fee Delta",
+  */
   "Net Delivery Fee",
   "Net Delivery Fee" - max(
     case
       when "Bucket" = 'Treatment' then "Net Delivery Fee"
     end
   ) over (partition by segment) as "Net Delivery Fee Delta",
+  /*
   "Service Fee" - max(
     case
       when "Bucket" = 'Treatment' then "Service Fee"
@@ -516,7 +520,8 @@ select
       when "Bucket" = 'Treatment' then "# Cx"
     end
   ) over (partition by segment) as "DP Signup Gain",
-    - "GOV Delta" / nullif("DP Signup Gain", 0) as "GOV:DP Ratio"
+    - "GOV Delta" / nullif("DP Signup Gain", 0) as "GOV:DP Ratio",
+  - "Order Rate Lift" / "Net Delivery Fee Delta" as "Price Sensitivity"
 from pen 
 order by
   2,1
@@ -524,15 +529,16 @@ order by
 
 -- Exposed Tenure
 
-
 with
   be as (
     select
-      a.*, b.first_exposed old_first_exposed
+      a.*
     from
       static.us_universal_dv_a_be a
       join proddb.static.wbd_experiment_exposure b --old DV in treatment
             on a.user_id = b.user_id and b.tag_renamed = 'Treatment'
+      join proddb.public.FACT_DYNAMIC_AUDIENCE_WBD_ORDER_FREQUENCY_L365D c
+        on injected_date = a.first_exposed::date and c.consumer_id = a.user_id
   group by all
   ),
   core_dd as (
@@ -683,12 +689,14 @@ select
       when "Bucket" = 'Treatment' then "Gross Delivery Fee"
     end
   ) over (partition by segment) as "Gross Delivery Fee Delta",
+  */
   "Net Delivery Fee",
   "Net Delivery Fee" - max(
     case
       when "Bucket" = 'Treatment' then "Net Delivery Fee"
     end
   ) over (partition by segment) as "Net Delivery Fee Delta",
+  /*
   "Service Fee" - max(
     case
       when "Bucket" = 'Treatment' then "Service Fee"
@@ -775,7 +783,8 @@ select
       when "Bucket" = 'Treatment' then "# Cx"
     end
   ) over (partition by segment) as "DP Signup Gain",
-   - "GOV Delta" / nullif("DP Signup Gain", 0) as "GOV:DP Ratio"
+   - "GOV Delta" / nullif("DP Signup Gain", 0) as "GOV:DP Ratio",
+  - "Order Rate Lift" / "Net Delivery Fee Delta" as "Price Sensitivity"
 from pen 
 order by
   2,1
@@ -789,6 +798,8 @@ with
       static.us_universal_dv_a_be a
       join proddb.static.wbd_experiment_exposure b --old DV in treatment
             on a.user_id = b.user_id and b.tag_renamed = 'Treatment'
+      join proddb.public.FACT_DYNAMIC_AUDIENCE_WBD_ORDER_FREQUENCY_L365D c
+        on injected_date = a.first_exposed::date and c.consumer_id = a.user_id
   group by all
   ),
   core_dd as (
