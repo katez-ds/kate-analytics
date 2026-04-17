@@ -1058,7 +1058,7 @@ order by
 with
   be as (
     select
-      a.*,b.first_exposed old_first_exposed
+      a.*
     from
       static.us_universal_dv_a_be a
       join proddb.static.wbd_experiment_exposure b --old DV in treatment
@@ -1112,40 +1112,21 @@ dp_adoption as(
       a.first_exposed,
       --cc.total_cx,
       c.*,
-      L360_orders/360*7 l365d_of,
-      l28_orders/4 l28d_of,
-      (l28d_of - l365d_of)*1.0000 of_diff,
-      datediff(day,old_first_exposed,first_exposed) exposed_tenure,
       dpa.consumer_id as dp_sign_up
     from
       be a
       left join core_dd c on c.creator_id = a.user_id
       AND c.CREATED_AT >= a.first_exposed
+      --left join cx_cnt cc on cc.tag_renamed = a.tag_renamed  
       left join proddb.mattheitz.mh_customer_authority ca
         on a.user_id=ca.creator_id and a.first_exposed::date = ca.dte::date
-      --left join cx_cnt cc on cc.tag_renamed = a.tag_renamed  
       left join dp_adoption dpa on a.user_id = dpa.consumer_id and dpa.start_time::date>=a.first_exposed::date
       group by all
   ),
   pen as (
     select
       tag_renamed as "Bucket",
-    case when exposed_tenure <=90 then '1. <=3 Months'
-    when exposed_tenure <= 365 then '2. 3-12 Months'
-    when exposed_tenure <= 730 then '3. 1-2 Years'
-    when exposed_tenure <= 1095 then '4. 2-3 Years'
-    when exposed_tenure <= 1460 then '5. 3-4 Years'
-    end as segment,
-  /*
-  case when l28d_of = 0 then '1. 0 Order'
-    when l28d_of <= 2 then '2. 0-2 Orders'
-    when l28d_of <= 4 then '3. 2-4 Orders'
-    when l28d_of <= 8 then '4. 4-8 Orders'
-    when l28d_of <= 12 then '5. 8-12 Orders'
-    when l28d_of <= 20 then '6. 12-16 Orders'
-    when l28d_of > 16 then '7. > 16 Orders'
-    end as segment,
-  */
+
     count(distinct consumer_id) as "# Cx",
       count(
         distinct case
@@ -1190,11 +1171,11 @@ dp_adoption as(
       count(distinct dp_sign_up) as "DP Signups"
     from
       comb
-    where of_diff>0
-    group by 1,2
+
+    group by all
   )
 select
-    segment,
+    
   "Bucket",
   "# Cx",
   "Volume",
@@ -1203,16 +1184,16 @@ select
     case
       when "Bucket" = 'Treatment' then "Order Rate"
     end
-  ) over (partition by segment) - 1 as "Order Rate Lift",
+  ) over () - 1 as "Order Rate Lift",
     "Volume" - max(
     case
       when "Bucket" = 'Treatment' then "Volume"
     end
-  ) over (partition by segment) * "# Cx" / max(
+  ) over () * "# Cx" / max(
     case
       when "Bucket" = 'Treatment' then "# Cx"
     end
-  ) over (partition by segment) as "Volume Delta",
+  ) over () as "Volume Delta",
   /*
   "Gross Delivery Fee",
   "Gross Delivery Fee" - max(
@@ -1226,7 +1207,7 @@ select
     case
       when "Bucket" = 'Treatment' then "Net Delivery Fee"
     end
-  ) over (partition by segment) as "Net Delivery Fee Delta",
+  ) over () as "Net Delivery Fee Delta",
   /*
   "Service Fee" - max(
     case
@@ -1239,34 +1220,34 @@ select
     case
       when "Bucket" = 'Treatment' then "Unit VP"
     end
-  ) over (partition by segment) as "Unit VP Delta",
+  ) over () as "Unit VP Delta",
     VP,
      vp - max(
     case
       when "Bucket" = 'Treatment' then vp
     end
-  ) over (partition by segment) * "# Cx" / max(
+  ) over () * "# Cx" / max(
     case
       when "Bucket" = 'Treatment' then "# Cx"
     end
-  ) over (partition by segment) as "VP Delta",
+  ) over () as "VP Delta",
     "VP Delta" / (
     max(
       case
         when "Bucket" = 'Treatment' then vp
       end
-    ) over (partition by segment) * "# Cx" / max(
+    ) over () * "# Cx" / max(
       case
         when "Bucket" = 'Treatment' then "# Cx"
       end
-    ) over (partition by segment)
+    ) over ()
   ) as "VP Lift",
   "AOV",
   "AOV" - max(
     case
       when "Bucket" = 'Treatment' then "AOV"
     end
-  ) over (partition by segment) as "AOV Delta",
+  ) over () as "AOV Delta",
   /*
   "Subtotal",
   "Subtotal" - max(
@@ -1279,7 +1260,7 @@ select
     case
       when "Bucket" = 'Treatment' then gov_adj
     end
-  ) over (partition by segment) - 1 as "GOV Lift",
+  ) over () - 1 as "GOV Lift",
   /*
   "Order Rate" - max(
     case
@@ -1292,11 +1273,11 @@ select
     case
       when "Bucket" = 'Treatment' then gov
     end
-  ) over (partition by segment) * "# Cx" / max(
+  ) over () * "# Cx" / max(
     case
       when "Bucket" = 'Treatment' then "# Cx"
     end
-  ) over (partition by segment) as "GOV Delta",
+  ) over () as "GOV Delta",
   - "GOV Delta" / nullif("VP Delta", 0) as "GOV:VP Ratio",
   - "VP Delta" / nullif("Volume Delta", 0) as "(-CPID)/(+GPLD) In Campaign",
    "DP Signups" / nullif("# Cx", 0) as "DP Signup Rate",
@@ -1304,19 +1285,19 @@ select
     case
       when "Bucket" = 'Treatment' then "DP Signup Rate"
     end
-  ) over (partition by segment) - 1 as "DP Signup Rate Lift",
+  ) over () - 1 as "DP Signup Rate Lift",
 "DP Signups" - max(
     case
       when "Bucket" = 'Treatment' then "DP Signups"
     end
-  ) over (partition by segment) * "# Cx" / max(
+  ) over () * "# Cx" / max(
     case
       when "Bucket" = 'Treatment' then "# Cx"
     end
-  ) over (partition by segment) as "DP Signup Gain",
-   - "GOV Delta" / nullif("DP Signup Gain", 0) as "GOV:DP Ratio",
-  - "Order Rate Lift" / nullif("Net Delivery Fee Delta",0) as "Price Sensitivity"
+  ) over () as "DP Signup Gain",
+    - "GOV Delta" / nullif("DP Signup Gain", 0) as "GOV:DP Ratio",
+    - "Order Rate Lift" / nullif("Net Delivery Fee Delta",0) as "Price Sensitivity"
 from pen 
-order by
-  2,1
+
+
 
