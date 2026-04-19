@@ -52,6 +52,33 @@ WBD_IND	XS_IND	PAD_IND	MX_IND	CRM_IND	ORDERS	AFFORDABILITY_PROGRAM_DISCOUNT	MX_F
 0	0	1	0	1	1068098	2105583.800000	0.000000	8014751.263151119324	2192651.150000
 1	1	0	0	0	339900	948254.140000	0.000000		950916.340000
 
+
+-- Simplified View
+select 
+case when wbd_fee_promo_discount+cs_fee_promo_discount+pad_fee_promo_discount> 0 then 1
+else 0 end affordability_ind,
+case when mx_funded_cx_discount > 0 then 1
+else 0 end mx_ind,
+case when b.delivery_id is not null then 1
+else 0 end crm_ind,
+count(distinct a.delivery_id) orders,
+sum(wbd_fee_promo_discount+cs_fee_promo_discount+pad_fee_promo_discount) affordability_program_discount,
+sum(mx_funded_cx_discount) mx_funded_discount,
+sum(crm_discount) crm_discount,
+sum(total_fee_promo_discount) total_discount
+from proddb.static.df_sf_promo_discount_delivery_level a
+left join 
+    (select delivery_id,
+    case when campaign_id is not null then coalesce(FDA_OTHER_PROMOTIONS_BASE + FDA_PROMOTION_CATCH_ALL + FDA_CONSUMER_RETENTION - FDA_BUNDLES_PRICING_DISCOUNT, 0) else 0 end AS crm_discount
+    from proddb.public.fact_order_discounts_and_promotions_extended
+    where crm_discount >0
+    and year(active_date) = 2025
+    group by 1,2) b
+    on a.delivery_id = b.delivery_id
+where year(created_at) = 2025
+group by all
+
+    
 -- 2025 Classical/Restaurant Orders with discount
 with non_dp_delivery as
 (select dd.delivery_id,nv.business_line
