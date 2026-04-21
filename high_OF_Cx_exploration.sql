@@ -77,3 +77,23 @@ FROM proddb.katez.cx_orders x
 where l360_orders > 30
 group by 1,2
 order by 1,2
+
+with orders AS (
+    SELECT
+        creator_id,
+        delivery_id,
+        CASE
+            WHEN DAYOFWEEKISO(CONVERT_TIMEZONE('UTC', d.timezone, d.actual_order_place_time)) IN (6, 7) THEN 'Weekend'
+            ELSE 'Weekday'
+        END AS weekpart,
+        CASE
+            WHEN HOUR(convert_timezone('UTC',dd.timezone,dd.QUOTED_DELIVERY_TIME)) BETWEEN 5 AND 10 THEN 'Breakfast'
+            WHEN HOUR(convert_timezone('UTC',dd.timezone,dd.QUOTED_DELIVERY_TIME)) BETWEEN 11 AND 15 THEN 'Lunch'
+            WHEN HOUR(convert_timezone('UTC',dd.timezone,dd.QUOTED_DELIVERY_TIME)) BETWEEN 16 AND 21 THEN 'Dinner'
+            ELSE 'Other'
+        END AS mealpart
+    FROM proddb.public.dimension_deliveries 
+where 1=1
+       AND is_filtered_core = TRUE
+       AND created_at::date BETWEEN '2025-04-16' and '2026-04-15'
+),
