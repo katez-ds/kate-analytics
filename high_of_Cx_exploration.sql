@@ -40,6 +40,25 @@ FROM proddb.katez.cx_orders x
 group by 1,2
 order by 1,2
 
+-- L365 of>30, OF momentun change
+        
+SELECT
+    --x.dte AS snapshot_date,
+    x.consumer_type,
+    case when L360_orders/360*7 = L28_orders/4 then 'OF Same'
+    when L360_orders/360*7 < L28_orders/4 then 'OF Increase'
+    when L360_orders/360*7 > L28_orders/4 then 'OF Drop'
+    end of_change,
+    count(distinct x.creator_id) consumers,
+    consumers / NULLIF(SUM(consumers) OVER (PARTITION BY x.consumer_type), 0) AS pct_cx,
+    sum(l7_orders) weekly_orders,
+    weekly_orders / NULLIF(SUM(weekly_orders) OVER (PARTITION BY x.consumer_type), 0) AS pct_orders
+FROM proddb.katez.cx_orders x
+where l360_orders > 30
+group by 1,2
+order by 1,2
+
+
 -- L365d of>30, L365d NV Orders
 SELECT
     --x.dte AS snapshot_date,
