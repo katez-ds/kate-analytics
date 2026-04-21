@@ -89,6 +89,7 @@ group by 1
 order by 1
 
 -- California
+
 -- Control vs Treatment
 set exp_name = 'discount_engine_deals_us_reg_markets';
 set start_time = '2026-04-16'::date;
@@ -134,7 +135,7 @@ or (event_properties:container_id::string = 'discount_engine_deals_v1_us')
 group by all
 )
 
-select tag,
+select 
 count(distinct a.user_id) exposed_users,
 count(distinct a.user_id) *1.0000/sum(count(distinct a.user_id)) over() perc_of_total_exposed,
 count(distinct b.user_id) users_ordered_with_impressions,
@@ -142,6 +143,7 @@ count(distinct b.user_id)*1.0000/count(distinct a.user_id) impression_rate
 from universal_be a
 left join pad_impressions b
   on a.user_id = b.user_id and b.impression_dt>= a.first_exposed
+where tag = 'Treatment'
 group by all
 order by all
 
