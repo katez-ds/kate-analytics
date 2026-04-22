@@ -130,7 +130,7 @@ group by all
 
 SELECT
     x.consumer_type,
-    
+        /*
     case when share_of_weekday_orders = 0 then '1. 0'
     when share_of_weekday_orders <= 25 then '2. 0-25%'
     when share_of_weekday_orders <= 50 then '3. 25%-50%'
@@ -139,7 +139,7 @@ SELECT
     when share_of_weekday_orders < 100 then '5. 95%-99%'
     when share_of_weekday_orders = 100 then '6. 100%'
     end weekday_share,
-    /*
+
     case when share_of_lunch_orders = 0 then '1. 0'
     when share_of_lunch_orders <= 25 then '2. 0-25%'
     when share_of_lunch_orders <= 50 then '3. 25%-50%'
@@ -149,6 +149,14 @@ SELECT
     when share_of_lunch_orders = 100 then '6. 100%'
     end lunch_share,
     */
+    case when share_of_dinner_orders = 0 then '1. 0'
+    when share_of_dinner_orders <= 25 then '2. 0-25%'
+    when share_of_dinner_orders <= 50 then '3. 25%-50%'
+    when share_of_dinner_orders <= 75 then '4. 50%-75%'
+    when share_of_dinner_orders <= 95 then '5. 75%-95%'
+    when share_of_dinner_orders < 100 then '5. 95%-99%'
+    when share_of_dinner_orders = 100 then '6. 100%'
+    end dinner_share,
     count(distinct x.creator_id) consumers,
     consumers / NULLIF(SUM(consumers) OVER (PARTITION BY x.consumer_type), 0) AS pct_cx,
     sum(l7_orders) weekly_orders,
