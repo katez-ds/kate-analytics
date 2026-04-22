@@ -94,23 +94,57 @@ left join proddb.ml.cx_sensitivity_v3 psm
 where l360_orders > 30
 group by 1,2
 order by 1,2
-        
+
+-- By Order Time
 with orders AS (
     SELECT
         creator_id,
-        delivery_id,
+        --delivery_id,
+        --created_at::date order_dt,
         CASE
-            WHEN DAYOFWEEKISO(CONVERT_TIMEZONE('UTC', d.timezone, d.actual_order_place_time)) IN (6, 7) THEN 'Weekend'
+            WHEN DAYOFWEEKISO(CONVERT_TIMEZONE('UTC', timezone, QUOTED_DELIVERY_TIME)) IN (6, 7) THEN 'Weekend'
             ELSE 'Weekday'
         END AS weekpart,
         CASE
-            WHEN HOUR(convert_timezone('UTC',dd.timezone,dd.QUOTED_DELIVERY_TIME)) BETWEEN 5 AND 10 THEN 'Breakfast'
-            WHEN HOUR(convert_timezone('UTC',dd.timezone,dd.QUOTED_DELIVERY_TIME)) BETWEEN 11 AND 15 THEN 'Lunch'
-            WHEN HOUR(convert_timezone('UTC',dd.timezone,dd.QUOTED_DELIVERY_TIME)) BETWEEN 16 AND 21 THEN 'Dinner'
+            WHEN HOUR(convert_timezone('UTC', timezone, QUOTED_DELIVERY_TIME)) BETWEEN 5 AND 10 THEN 'Breakfast'
+            WHEN HOUR(convert_timezone('UTC', timezone, QUOTED_DELIVERY_TIME)) BETWEEN 11 AND 15 THEN 'Lunch'
+            WHEN HOUR(convert_timezone('UTC', timezone, QUOTED_DELIVERY_TIME)) BETWEEN 16 AND 21 THEN 'Dinner'
             ELSE 'Other'
-        END AS mealpart
+        END AS mealpart,
+        count(distinct delivery_id) orders
     FROM proddb.public.dimension_deliveries 
 where 1=1
        AND is_filtered_core = TRUE
        AND created_at::date BETWEEN '2025-04-16' and '2026-04-15'
+group by all
 ),
+cx_pattern AS (
+SELECT
+        creator_id,
+        sum(case when weekpart = 'Weekday' then orders end) *1.0000 / sum(orders) share_of_weekday_orders,
+        sum(case when mealpart = 'Lunch' then orders end) *1.0000 / sum(orders) share_of_lunch_orders,
+        sum(case when mealpart = 'Dinner' then orders end) *1.0000 / sum(orders) share_of_dinner_orders
+    FROM orders
+group by all
+)
+
+SELECT
+    x.consumer_type,
+    case when share_of_weekday_orders = 0 then '1. 0'
+    when share_of_weekday_orders <= 0.25 then '2. 0-25%'
+    when share_of_weekday_orders <= 0.5 then '3. 25%-50%'
+    when share_of_weekday_orders <= 0.75 then '4. 70%-75%'
+    when share_of_weekday_orders < 1 then '5. 50%-99%'
+    when share_of_weekday_orders = 1 then '6. 100%'
+    end weekday_share,
+    count(distinct x.creator_id) consumers,
+    consumers / NULLIF(SUM(consumers) OVER (PARTITION BY x.consumer_type), 0) AS pct_cx,
+    sum(l7_orders) weekly_orders,
+    weekly_orders / NULLIF(SUM(weekly_orders) OVER (PARTITION BY x.consumer_type), 0) AS pct_orders
+FROM proddb.katez.cx_orders x
+left join cx_pattern b
+    on x.creator_id = b.creator_id
+where l360_orders > 30
+group by 1,2
+order by 1,2
+
