@@ -133,8 +133,9 @@ SELECT
     case when share_of_weekday_orders = 0 then '1. 0'
     when share_of_weekday_orders <= 0.25 then '2. 0-25%'
     when share_of_weekday_orders <= 0.5 then '3. 25%-50%'
-    when share_of_weekday_orders <= 0.75 then '4. 70%-75%'
-    when share_of_weekday_orders < 1 then '5. 50%-99%'
+    when share_of_weekday_orders <= 0.75 then '4. 50%-75%'
+    when share_of_weekday_orders < 0.95 then '5. 75%-95%'
+    when share_of_weekday_orders < 1 then '5. 95%-99%'
     when share_of_weekday_orders = 1 then '6. 100%'
     end weekday_share,
     count(distinct x.creator_id) consumers,
@@ -147,4 +148,3 @@ left join cx_pattern b
 where l360_orders > 30
 group by 1,2
 order by 1,2
-
