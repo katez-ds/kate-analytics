@@ -40,7 +40,7 @@ FROM proddb.katez.cx_orders x
 group by 1,2
 order by 1,2
 
--- L365 of>30, OF momentun change
+-- L365 of>30, OF momentum change
         
 SELECT
     --x.dte AS snapshot_date,
@@ -78,6 +78,23 @@ where l360_orders > 30
 group by 1,2
 order by 1,2
 
+-- By Price Sensitivity (PSMv3)
+
+SELECT
+    --x.dte AS snapshot_date,
+    x.consumer_type,
+    v3_sensitivity_cohort,
+    count(distinct x.creator_id) consumers,
+    consumers / NULLIF(SUM(consumers) OVER (PARTITION BY x.consumer_type), 0) AS pct_cx,
+    sum(l7_orders) weekly_orders,
+    weekly_orders / NULLIF(SUM(weekly_orders) OVER (PARTITION BY x.consumer_type), 0) AS pct_orders
+FROM proddb.katez.cx_orders x
+left join proddb.ml.cx_sensitivity_v3 psm
+    on x.creator_id = psm.consumer_id and active_date = date'2026-04-15'
+where l360_orders > 30
+group by 1,2
+order by 1,2
+        
 with orders AS (
     SELECT
         creator_id,
