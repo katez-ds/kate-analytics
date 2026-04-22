@@ -121,23 +121,34 @@ group by all
 cx_pattern AS (
 SELECT
         creator_id,
-        sum(case when weekpart = 'Weekday' then orders end) *1.0000 / sum(orders) share_of_weekday_orders,
-        sum(case when mealpart = 'Lunch' then orders end) *1.0000 / sum(orders) share_of_lunch_orders,
-        sum(case when mealpart = 'Dinner' then orders end) *1.0000 / sum(orders) share_of_dinner_orders
+        sum(case when weekpart = 'Weekday' then orders else 0 end) *100 / sum(orders) share_of_weekday_orders,
+        sum(case when mealpart = 'Lunch' then orders else 0 end) *100 / sum(orders) share_of_lunch_orders,
+        sum(case when mealpart = 'Dinner' then orders else 0 end) *100 / sum(orders) share_of_dinner_orders
     FROM orders
 group by all
 )
 
 SELECT
     x.consumer_type,
+    
     case when share_of_weekday_orders = 0 then '1. 0'
-    when share_of_weekday_orders <= 0.25 then '2. 0-25%'
-    when share_of_weekday_orders <= 0.5 then '3. 25%-50%'
-    when share_of_weekday_orders <= 0.75 then '4. 50%-75%'
-    when share_of_weekday_orders < 0.95 then '5. 75%-95%'
-    when share_of_weekday_orders < 1 then '5. 95%-99%'
-    when share_of_weekday_orders = 1 then '6. 100%'
+    when share_of_weekday_orders <= 25 then '2. 0-25%'
+    when share_of_weekday_orders <= 50 then '3. 25%-50%'
+    when share_of_weekday_orders <= 75 then '4. 50%-75%'
+    when share_of_weekday_orders <= 95 then '5. 75%-95%'
+    when share_of_weekday_orders < 100 then '5. 95%-99%'
+    when share_of_weekday_orders = 100 then '6. 100%'
     end weekday_share,
+    /*
+    case when share_of_lunch_orders = 0 then '1. 0'
+    when share_of_lunch_orders <= 25 then '2. 0-25%'
+    when share_of_lunch_orders <= 50 then '3. 25%-50%'
+    when share_of_lunch_orders <= 75 then '4. 50%-75%'
+    when share_of_lunch_orders <= 95 then '5. 75%-95%'
+    when share_of_lunch_orders < 100 then '5. 95%-99%'
+    when share_of_lunch_orders = 100 then '6. 100%'
+    end lunch_share,
+    */
     count(distinct x.creator_id) consumers,
     consumers / NULLIF(SUM(consumers) OVER (PARTITION BY x.consumer_type), 0) AS pct_cx,
     sum(l7_orders) weekly_orders,
