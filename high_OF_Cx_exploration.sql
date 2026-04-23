@@ -60,6 +60,13 @@ order by 1,2
 
 
 -- L365d of>30, L365d NV Orders
+/*
+L360_ALCOHOL_ORDERS
+L360_DASHMART_ORDERS
+L364_RETAIL_ORDERS
+L360_CONVENIENCE_ORDERS
+L360_grocery_orders
+*/
 SELECT
     --x.dte AS snapshot_date,
     x.consumer_type,
