@@ -219,10 +219,12 @@ group by all
 )
 
 select 
+case when L28D_DP_savings<2000 then 1 else 0 end L28D_DP_savings_under_20,
 count(distinct delivery_id) eligible_orders
 from proddb.katez.tags2
   where eligibility_flag = 1 and L90D_DP_OF<20 and L90D_mx_orders<5
-
+  group by 1
+  order by 1
 
 /*
 select 
