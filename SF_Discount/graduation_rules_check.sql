@@ -206,7 +206,10 @@ a.delivery_id,a.creator_id,a.order_dt,
 case when b.consumer_id is null then 0 else 1 end eligibility_flag,
 count(distinct case when c.is_subscribed_consumer then c.delivery_id end) L90D_DP_OF,
 count(distinct case when a.store_id = c.store_id then c.delivery_id end) L90D_mx_orders,
-sum(case when c.order_dt between a.order_dt::date - 28 and a.order_dt::date -1 then c.dp_savings end) L28D_DP_savings
+sum(case when c.order_dt between a.order_dt::date - 28 and a.order_dt::date -1 then c.dp_savings end) L28D_DP_savings,
+sum(case when c.order_dt between a.order_dt::date - 30 and a.order_dt::date -1 then c.dp_savings end) L30D_DP_savings,
+sum(case when c.order_dt between a.order_dt::date - 60 and a.order_dt::date - 31 then c.dp_savings end) L30Dto60D_DP_savings,
+sum(case when c.order_dt between a.order_dt::date - 90 and a.order_dt::date - 61 then c.dp_savings end) L60Dto90D_DP_savings
 from proddb.katez.dp_orders_7d a
 left join proddb.katez.new_dp b on b.consumer_id = a.creator_id
     --and a.order_dt = b.dte
@@ -226,6 +229,17 @@ from proddb.katez.tags2
   group by 1
   order by 1
 
+select 
+case when L30D_DP_savings>999 and L30Dto60D_DP_savings>999 and L60Dto90D_DP_savings>999 then 1 else 0 end consecutive_3m_net_saver,
+count(distinct delivery_id) eligible_orders
+from proddb.katez.tags2
+  where eligibility_flag = 1 and L90D_DP_OF<20 and L90D_mx_orders<5
+  group by 1
+  order by 1
+
+CONSECUTIVE_3M_NET_SAVER	ELIGIBLE_ORDERS
+0	1910507
+1	168684
 /*
 select 
 eligibility_flag, 
