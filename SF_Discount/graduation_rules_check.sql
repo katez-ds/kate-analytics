@@ -125,6 +125,106 @@ LEFT JOIN current_state cs
   where is_eligible = TRUE
   )
 
+-- Looking at just L365D for DP Tenure
+create or replace table proddb.katez.new_dp1
+as
+(
+WITH params AS (
+  SELECT
+    '2026-03-21' AS as_of_date,
+    DATEADD(year, -1, '2026-03-21') AS lookback_start_date
+),
+daily AS (
+  SELECT
+    d.consumer_id,
+    d.user_id,
+    d.subscription_id,
+    d.dte,
+    d.is_in_paid_balance,
+    d.is_partner_plan,
+    d.is_in_trial_period,
+    d.dynamic_subscription_status
+  FROM edw.consumer.fact_consumer_subscription__daily d
+  JOIN params p
+    ON d.dte BETWEEN p.lookback_start_date AND p.as_of_date
+),
+/* Cumulative day counts across all historical stints */
+features AS (
+  SELECT
+    consumer_id,
+    COUNT(DISTINCT IFF(
+      is_in_paid_balance = TRUE
+      OR dynamic_subscription_status ILIKE 'active_paid%',
+      dte, NULL
+    )) AS paid_days,
+    COUNT(DISTINCT IFF(
+      is_partner_plan = TRUE
+      AND (dynamic_subscription_status ILIKE 'active%'
+           OR dynamic_subscription_status ILIKE '%free_subscription%'),
+      dte, NULL
+    )) AS partner_days,
+    COUNT(DISTINCT IFF(
+      is_in_trial_period = TRUE
+      OR dynamic_subscription_status ILIKE 'trial%',
+      dte, NULL
+    )) AS trial_days
+  FROM daily
+  GROUP BY 1
+),
+/* Current plan state: what is the consumer on TODAY? */
+current_state AS (
+  SELECT
+    consumer_id, 
+    MAX(IFF(
+      is_in_paid_balance = TRUE
+      OR dynamic_subscription_status ILIKE 'active_paid%',
+      TRUE, FALSE
+    )) AS is_dashpass_paid,
+    MAX(IFF(
+      is_partner_plan = TRUE
+      AND (dynamic_subscription_status ILIKE 'active%'
+           OR dynamic_subscription_status ILIKE '%free_subscription%'),
+      TRUE, FALSE
+    )) AS is_dashpass_partner,
+    MAX(IFF(
+      is_in_trial_period = TRUE
+      OR dynamic_subscription_status ILIKE 'trial%',
+      TRUE, FALSE
+    )) AS is_trial_active
+  FROM daily
+  WHERE dte = '2026-03-21'
+  GROUP BY all
+)
+SELECT
+  f.consumer_id,
+  /* Day counts */
+  f.paid_days,
+  f.partner_days,
+  f.trial_days,
+  /* Current plan state */
+  COALESCE(cs.is_dashpass_paid, FALSE)    AS is_dashpass_paid,
+  COALESCE(cs.is_dashpass_partner, FALSE) AS is_dashpass_partner,
+  COALESCE(cs.is_trial_active, FALSE)     AS is_trial_active,
+  /* Component eligibility checks */
+  (f.paid_days <= 120)    AS is_paid_eligible,
+  (f.partner_days <= 120) AS is_partner_eligible,
+  /* Two-path eligibility:
+     Path 1 (paid/partner): is_paid_eligible AND is_partner_eligible
+     Path 2 (classic/other): is_trial_active AND is_paid_eligible AND is_partner_eligible
+  */
+  CASE
+    WHEN COALESCE(cs.is_dashpass_paid, FALSE)
+      OR COALESCE(cs.is_dashpass_partner, FALSE)
+      THEN (f.paid_days <= 120) AND (f.partner_days <= 120)
+    WHEN COALESCE(cs.is_trial_active, FALSE)
+      THEN (f.paid_days <= 120) AND (f.partner_days <= 120)
+    ELSE FALSE  -- no active DashPass subscription
+  END AS is_eligible
+FROM features f
+LEFT JOIN current_state cs
+  ON f.consumer_id = cs.consumer_id
+  where is_eligible = TRUE
+  )
   
 create or replace table proddb.katez.dp_orders_7d
 AS (
@@ -221,6 +321,42 @@ left join proddb.katez.orders_90d c on b.consumer_id = c.creator_id
     --and b.order_dt between a.order_dt - 90 and a.order_dt -1
 group by all
 )
+
+create or replace table proddb.katez.tags1
+as (
+select 
+a.delivery_id,a.creator_id,a.order_dt,
+case when b.consumer_id is null then 0 else 1 end eligibility_flag,
+count(distinct case when c.is_subscribed_consumer then c.delivery_id end) L90D_DP_OF,
+count(distinct case when c.order_dt between a.order_dt::date - 28 and a.order_dt::date -1 and c.is_subscribed_consumer then c.delivery_id end) L28D_DP_OF,
+count(distinct case when a.store_id = c.store_id then c.delivery_id end) L90D_mx_orders,
+sum(case when c.order_dt between a.order_dt::date - 28 and a.order_dt::date -1 then c.dp_savings end) L28D_DP_savings,
+sum(case when c.order_dt between a.order_dt::date - 30 and a.order_dt::date -1 then c.dp_savings end) L30D_DP_savings,
+sum(case when c.order_dt between a.order_dt::date - 60 and a.order_dt::date - 31 then c.dp_savings end) L30Dto60D_DP_savings,
+sum(case when c.order_dt between a.order_dt::date - 90 and a.order_dt::date - 61 then c.dp_savings end) L60Dto90D_DP_savings
+from proddb.katez.dp_orders_7d a
+left join proddb.katez.new_dp1 b on b.consumer_id = a.creator_id
+    --and a.order_dt = b.dte
+left join proddb.katez.orders_90d c on b.consumer_id = c.creator_id
+    and c.order_dt between a.order_dt::date - 90 and a.order_dt::date -1
+--left join orders_90d d on b.consumer_id = d.creator_id
+    --and b.store_id = d.store_id 
+    --and b.order_dt between a.order_dt - 90 and a.order_dt -1
+group by all
+)
+
+--Latest logic
+select 
+count(distinct delivery_id) eligible_orders
+from proddb.katez.tags1
+  where eligibility_flag = 1 and L90D_DP_OF<=20 and L28D_DP_OF<=8 and L90D_mx_orders<4
+
+2003576
+
+select 
+count(distinct delivery_id) eligible_orders
+from proddb.katez.tags1
+  where eligibility_flag = 1 and L90D_DP_OF<=20 and L28D_DP_OF<=8 and L90D_mx_orders<4
 
 select 
 case when L28D_DP_savings<2000 then 1 else 0 end L28D_DP_savings_under_20,
