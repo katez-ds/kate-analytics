@@ -205,6 +205,7 @@ select
 a.delivery_id,a.creator_id,a.order_dt,
 case when b.consumer_id is null then 0 else 1 end eligibility_flag,
 count(distinct case when c.is_subscribed_consumer then c.delivery_id end) L90D_DP_OF,
+count(distinct case when c.order_dt between a.order_dt::date - 28 and a.order_dt::date -1 and c.is_subscribed_consumer then c.delivery_id end) L28D_DP_OF,
 count(distinct case when a.store_id = c.store_id then c.delivery_id end) L90D_mx_orders,
 sum(case when c.order_dt between a.order_dt::date - 28 and a.order_dt::date -1 then c.dp_savings end) L28D_DP_savings,
 sum(case when c.order_dt between a.order_dt::date - 30 and a.order_dt::date -1 then c.dp_savings end) L30D_DP_savings,
@@ -228,7 +229,11 @@ from proddb.katez.tags2
   where eligibility_flag = 1 and L90D_DP_OF<20 and L90D_mx_orders<5
   group by 1
   order by 1
-
+  
+L28D_DP_SAVINGS_UNDER_20	ELIGIBLE_ORDERS
+0	1045012  50.2%
+1	1034179
+  
 select 
 case when L30D_DP_savings>999 and L30Dto60D_DP_savings>999 and L60Dto90D_DP_savings>999 then 1 else 0 end consecutive_3m_net_saver,
 count(distinct delivery_id) eligible_orders
@@ -238,8 +243,52 @@ from proddb.katez.tags2
   order by 1
 
 CONSECUTIVE_3M_NET_SAVER	ELIGIBLE_ORDERS
-0	1910507
+0	1910507  91.9%
 1	168684
+
+
+select 
+case when L28D_DP_OF<=8 then 1 else 0 end L28D_DP_OF_under_8,
+count(distinct delivery_id) eligible_orders
+from proddb.katez.tags2
+  where eligibility_flag = 1 and L90D_DP_OF<20 and L90D_mx_orders<5
+  group by 1
+  order by 1
+
+L28D_DP_OF_UNDER_8	ELIGIBLE_ORDERS
+0	321130  84.6%
+1	1758061
+
+select 
+case when L90D_DP_OF<10 then 1 else 0 end L90D_DP_OF_under_10,
+count(distinct delivery_id) eligible_orders
+from proddb.katez.tags2
+  where eligibility_flag = 1 and L90D_DP_OF<20 and L90D_mx_orders<5
+  group by 1
+  order by 1
+
+L90D_DP_OF_UNDER_10	ELIGIBLE_ORDERS
+0	703467
+1	1375724 66%
+
+L90D_DP_OF_UNDER_12	ELIGIBLE_ORDERS
+0	522996
+1	1556195  75%
+  
+select 
+case when L28D_DP_OF<=4 then 1 else 0 end L28D_DP_OF_under_4,
+count(distinct delivery_id) eligible_orders
+from proddb.katez.tags2
+  where eligibility_flag = 1 and L90D_DP_OF<20 and L90D_mx_orders<5
+  group by 1
+  order by 1
+  
+L28D_DP_OF_UNDER_4	ELIGIBLE_ORDERS
+0	857991 41.2%
+1	1221200 
+
+
+  
 /*
 select 
 eligibility_flag, 
