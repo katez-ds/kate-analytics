@@ -187,3 +187,133 @@ left join cx_pattern b
 where l360_orders > 30
 group by 1,2
 order by 1,2
+
+
+-- High OF (L360 orders > 30 on mh snapshot): L90d daypart behavior vs Classic / DashPass
+-- Mirrors assumptions in https://github.com/katez-ds/kate-analytics/blob/main/high_OF_Cx_exploration.sql
+--   - mh_customer_authority: snapshot dte, acquisition_country_id = 1, days_since_first_purchase > 0
+--   - High OF: l360_orders > 30
+--   - consumer_type: dp_sub_flag_start = 1 -> DashPass else Classic
+--   - Daypart hour bands (local TZ from dimension_deliveries.timezone on QUOTED_DELIVERY_TIME)
+-- L90d order window: last 90 calendar days ending on snapshot_dte (inclusive), using created_at::date like the sample "By Order Time" block
+
+WITH params AS (
+    SELECT DATE '2026-05-01' AS snapshot_dte  -- set to your mh_customer_authority.dte
+),
+
+base_cx AS (
+    SELECT
+        ca.creator_id,
+        CASE
+            WHEN ca.dp_sub_flag_start = 1 THEN 'DashPass'
+            ELSE 'Classic'
+        END AS consumer_type
+    FROM proddb.mattheitz.mh_customer_authority ca
+    CROSS JOIN params p
+    WHERE ca.dte = p.snapshot_dte
+      AND ca.days_since_first_purchase > 0
+      AND ca.acquisition_country_id = 1
+      AND ca.l360_orders > 30
+),
+
+totals AS (
+    SELECT
+        consumer_type,
+        COUNT(DISTINCT creator_id) AS total_high_of_users
+    FROM base_cx
+    GROUP BY 1
+),
+
+dayparts (daypart) AS (
+    SELECT column1
+    FROM VALUES
+        ('early_morning'),
+        ('breakfast'),
+        ('lunch'),
+        ('snack'),
+        ('dinner'),
+        ('latenight')
+),
+
+orders_l90d AS (
+    SELECT
+        dd.creator_id,
+        CASE
+            WHEN DATE_PART(
+                'hour',
+                CONVERT_TIMEZONE('UTC', dd.timezone, dd.QUOTED_DELIVERY_TIME)
+            ) < 5 THEN 'early_morning'
+            WHEN DATE_PART(
+                'hour',
+                CONVERT_TIMEZONE('UTC', dd.timezone, dd.QUOTED_DELIVERY_TIME)
+            ) BETWEEN 5 AND 10 THEN 'breakfast'
+            WHEN DATE_PART(
+                'hour',
+                CONVERT_TIMEZONE('UTC', dd.timezone, dd.QUOTED_DELIVERY_TIME)
+            ) BETWEEN 11 AND 13 THEN 'lunch'
+            WHEN DATE_PART(
+                'hour',
+                CONVERT_TIMEZONE('UTC', dd.timezone, dd.QUOTED_DELIVERY_TIME)
+            ) BETWEEN 14 AND 16 THEN 'snack'
+            WHEN DATE_PART(
+                'hour',
+                CONVERT_TIMEZONE('UTC', dd.timezone, dd.QUOTED_DELIVERY_TIME)
+            ) BETWEEN 17 AND 20 THEN 'dinner'
+            WHEN DATE_PART(
+                'hour',
+                CONVERT_TIMEZONE('UTC', dd.timezone, dd.QUOTED_DELIVERY_TIME)
+            ) BETWEEN 21 AND 23 THEN 'latenight'
+        END AS daypart,
+        COUNT(DISTINCT dd.delivery_id) AS n_orders_in_daypart
+    FROM proddb.public.dimension_deliveries dd
+    CROSS JOIN params p
+    WHERE dd.is_filtered_core = TRUE
+      AND dd.created_at::DATE BETWEEN DATEADD('day', -89, p.snapshot_dte) AND p.snapshot_dte
+      AND dd.QUOTED_DELIVERY_TIME IS NOT NULL
+      AND dd.timezone IS NOT NULL
+    GROUP BY 1, 2
+    HAVING daypart IS NOT NULL
+),
+
+user_daypart AS (
+    SELECT
+        b.creator_id,
+        b.consumer_type,
+        d.daypart,
+        COALESCE(o.n_orders_in_daypart, 0) AS n_orders_in_daypart
+    FROM base_cx b
+    CROSS JOIN dayparts d
+    LEFT JOIN orders_l90d o
+        ON b.creator_id = o.creator_id
+       AND d.daypart = o.daypart
+)
+
+SELECT
+    u.consumer_type,
+    u.daypart,
+    SUM(IFF(u.n_orders_in_daypart = 0, 1, 0)) AS users_never_this_daypart_l90d,
+    SUM(IFF(u.n_orders_in_daypart BETWEEN 1 AND 2, 1, 0)) AS users_1_to_2_this_daypart_l90d,
+    SUM(IFF(u.n_orders_in_daypart >= 3, 1, 0)) AS users_3plus_this_daypart_l90d,
+    t.total_high_of_users,
+    SUM(IFF(u.n_orders_in_daypart = 0, 1, 0))
+        / NULLIF(t.total_high_of_users, 0) AS pct_of_consumer_type_never,
+    SUM(IFF(u.n_orders_in_daypart BETWEEN 1 AND 2, 1, 0))
+        / NULLIF(t.total_high_of_users, 0) AS pct_of_consumer_type_1_to_2
+FROM user_daypart u
+JOIN totals t
+    ON u.consumer_type = t.consumer_type
+GROUP BY
+    u.consumer_type,
+    u.daypart,
+    t.total_high_of_users
+ORDER BY
+    u.consumer_type,
+    CASE u.daypart
+        WHEN 'early_morning' THEN 1
+        WHEN 'breakfast' THEN 2
+        WHEN 'lunch' THEN 3
+        WHEN 'snack' THEN 4
+        WHEN 'dinner' THEN 5
+        WHEN 'latenight' THEN 6
+    END;
+
