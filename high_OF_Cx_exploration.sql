@@ -199,6 +199,7 @@ order by 1,2
 -- PSM v3: left join proddb.ml.cx_sensitivity_v3 on consumer_id + active_date = snapshot_dte (same as "By Price Sensitivity" in reference query).
 -- Price-insensitive = any cohort whose name includes "insensitive" (covers DashPass e.g. 0.dp_very_insensitive and Classic e.g. 5/6.*).
 -- Cohorts like 4.dp_very_sensitive / 9.classic_very_sensitive stay price-sensitive. NULL/missing cohort → treated as price sensitive (IFF → TRUE).
+-- PSM % in output: among users who never ordered in that daypart (L90d), share who are price sensitive.
 
 WITH params AS (
     SELECT DATE '2026-04-15' AS snapshot_dte  -- set to your mh_customer_authority.dte
@@ -230,8 +231,7 @@ base_cx AS (
 totals AS (
     SELECT
         consumer_type,
-        COUNT(DISTINCT creator_id) AS total_high_of_users,
-        SUM(IFF(b.is_price_sensitive, 1, 0)) AS price_sensitive_users
+        COUNT(DISTINCT creator_id) AS total_high_of_users
     FROM base_cx b
     GROUP BY 1
 ),
@@ -291,6 +291,7 @@ user_daypart AS (
     SELECT
         b.creator_id,
         b.consumer_type,
+        b.is_price_sensitive,
         d.daypart,
         COALESCE(o.n_orders_in_daypart, 0) AS n_orders_in_daypart
     FROM base_cx b
@@ -307,19 +308,21 @@ SELECT
     SUM(IFF(u.n_orders_in_daypart BETWEEN 1 AND 2, 1, 0)) AS users_1_to_2_this_daypart_l90d,
     SUM(IFF(u.n_orders_in_daypart >= 3, 1, 0)) AS users_3plus_this_daypart_l90d,
     t.total_high_of_users,
+    -- Denominator for never / 1–2 pcts: all high-OF users in this row's consumer_type (Classic vs DashPass separately).
     SUM(IFF(u.n_orders_in_daypart = 0, 1, 0))
-        / NULLIF(t.total_high_of_users, 0) AS pct_of_consumer_type_never,
+        / NULLIF(t.total_high_of_users, 0) AS pct_never_this_daypart_of_all_high_of,
     SUM(IFF(u.n_orders_in_daypart BETWEEN 1 AND 2, 1, 0))
-        / NULLIF(t.total_high_of_users, 0) AS pct_of_consumer_type_1_to_2,
-    t.price_sensitive_users / NULLIF(t.total_high_of_users, 0) AS pct_of_consumer_type_price_sensitive
+        / NULLIF(t.total_high_of_users, 0) AS pct_1_to_2_this_daypart_of_all_high_of,
+    SUM(IFF(u.n_orders_in_daypart = 0 AND u.is_price_sensitive, 1, 0)) AS price_sensitive_users_never_this_daypart,
+    SUM(IFF(u.n_orders_in_daypart = 0 AND u.is_price_sensitive, 1, 0))
+        / NULLIF(SUM(IFF(u.n_orders_in_daypart = 0, 1, 0)), 0) AS pct_price_sensitive_among_never_this_daypart
 FROM user_daypart u
 JOIN totals t
     ON u.consumer_type = t.consumer_type
 GROUP BY
     u.consumer_type,
     u.daypart,
-    t.total_high_of_users,
-    t.price_sensitive_users
+    t.total_high_of_users
 ORDER BY
     u.consumer_type,
     CASE u.daypart
