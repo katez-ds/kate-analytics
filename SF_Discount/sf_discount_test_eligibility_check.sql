@@ -40,7 +40,7 @@ WITH universal_be AS (
 discount_orders AS (
     SELECT
         a.delivery_id,
-        a.creator_id AS user_id,
+        b.creator_id AS user_id,
         CAST(a.created_at AS DATE) AS order_dt,
         SUM(
             wbd_fee_promo_discount + cs_fee_promo_discount + pad_fee_promo_discount
