@@ -17,6 +17,7 @@ skip status (only rport on In experiment), rollout, team notes
   b. When a metric reaches significance, bold the % number
 4. Other Metrics: focus on the other primary metircs below, but only show when reaches stats significant.
   a. For the DF/SF, show the absolute impact (delta) instead of relative lift %
+Note: do not show other non core/primary metric.
   */
   
 core_primary_metrics:
