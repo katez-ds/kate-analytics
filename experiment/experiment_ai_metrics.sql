@@ -1,36 +1,36 @@
 # Base metric classification — copy and customize for your team.
 #
 # core_primary_metrics: always reported in every callout
-# metric_classification.primary: business-critical metrics
-# metric_classification.guardrail: safety/quality metrics
-# Everything not listed is classified as "secondary".
+# metric_classification.primary: business-critical metrics, report if reaches significance
+# metric_classification.guardrail: safety/quality metrics, do not report
+# Everything not listed is classified as "secondary", do not report
 
+/*
+Output Format Requirement:
+1. Experiment name linked to Curie
+2. Objective (Can leverage objective/context in Design Doc, e.g. https://docs.google.com/document/d/1FkW4EchBybjGIj7bbBqhksbjAwWH6kxIbA_2oMY35C0/edit?tab=t.0) 
+skip status, rollout, team notes
+4. Multi Arm: We can keep this, but wondering if we can provide some context around what each arms is by reading the Design doc. i.e. Pulling bucket name and arm description.
+3. Core Primary Metrics: can use the current format. 
+  If easy to update:
+  a. show the user friendly alias (e.g. Order Rate instead of order_rate_per_entity)
+  b. When a metric reaches significance, bold the % number
+  */
+  
 core_primary_metrics:
-  - consumers_mau
-  - order_rate_per_entity
-  - order_rate_per_entity_7d
+  - order_rate_per_entity -> Order Rate
+  - gov_per_cx_curie -> GOV
+  - consumers_mau -> MAU
+  - variable_profit_per_order -> VP
 
 metric_classification:
   primary:
-    - cng_order_rate_nc
-    - consumer_order_frequency_l_28_d
-    - consumers_mau
     - dashpass_signup
-    - dsmp_gov
-    - dsmp_order_frequency_7d
-    - dsmp_order_rate
-    - dsmp_order_rate_14d
-    - dsmp_order_rate_7d
-    - gov_per_order_curie
-    - nv_mau
-    - order_frequency_per_entity_7d
-    - order_rate_per_entity
-    - order_rate_per_entity_7d
-    - variable_profit_per_order
-    - webx_conversion_rate
-    - webx_order_rate
+    - dashpass_paid_balance
+    - cxp_net_delivery_fee_per_order
+    - cxp_net_service_fee_per_order
 
-  guardrail:
+  guardrail (do not report):
     - ads_promotion_promotion_cx_discount
     - ads_revenue
     - consumer_mto
