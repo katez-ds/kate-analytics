@@ -10,7 +10,7 @@ Output Format Requirement:
 1. Experiment name linked to Curie
 2. Objective (Can leverage objective/context in Design Doc, e.g. https://docs.google.com/document/d/1FkW4EchBybjGIj7bbBqhksbjAwWH6kxIbA_2oMY35C0/edit?tab=t.0) 
 skip status (only rport on In experiment), rollout, team notes
-4. Multi Arm: We can keep this, but wondering if we can provide some context around what each arms is by reading the Design doc. i.e. Pulling bucket name and arm description.
+4. Multi Arm: We can keep this, but wondering if we can provide some context around what each arms is by reading the Design doc. i.e. Pulling Tag and Arm Description.
 3. Core Primary Metrics: can use the current format. 
   If easy to update:
   a. Show the user friendly alias (e.g. Order Rate instead of order_rate_per_entity)
