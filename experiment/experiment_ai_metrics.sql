@@ -13,8 +13,10 @@ skip status (only rport on In experiment), rollout, team notes
 4. Multi Arm: We can keep this, but wondering if we can provide some context around what each arms is by reading the Design doc. i.e. Pulling bucket name and arm description.
 3. Core Primary Metrics: can use the current format. 
   If easy to update:
-  a. show the user friendly alias (e.g. Order Rate instead of order_rate_per_entity)
+  a. Show the user friendly alias (e.g. Order Rate instead of order_rate_per_entity)
   b. When a metric reaches significance, bold the % number
+4. Other Metrics: focus on the other primary metircs below, but only show when reaches stats significant.
+  a. For the DF/SF, show the absolute impact (delta) instead of relative lift %
   */
   
 core_primary_metrics:
@@ -25,12 +27,14 @@ core_primary_metrics:
 
 metric_classification:
   primary:
-    - dashpass_signup
-    - dashpass_paid_balance
-    - cxp_net_delivery_fee_per_order
-    - cxp_net_service_fee_per_order
+    - dashpass_signup -> DP Signup
+    - dashpass_paid_balance -> DP Paid Balance
+    - cxp_net_delivery_fee_per_order -> Net DF Delta
+    - cxp_net_service_fee_per_order -> Net SF Delta
 
-guardrail (do not report):
+  
+# do not report
+  guardrail: 
     - ads_promotion_promotion_cx_discount
     - ads_revenue
     - consumer_mto
