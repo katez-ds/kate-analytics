@@ -30,7 +30,7 @@ metric_classification:
     - cxp_net_delivery_fee_per_order
     - cxp_net_service_fee_per_order
 
-  guardrail (do not report):
+guardrail (do not report):
     - ads_promotion_promotion_cx_discount
     - ads_revenue
     - consumer_mto
