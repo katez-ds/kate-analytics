@@ -18,9 +18,9 @@ FROM (
     LEFT JOIN proddb.mattheitz.mh_customer_authority AS mca
         ON wbd.injected_date = mca.dte
        AND wbd.consumer_id = mca.creator_id
-    WHERE wbd.injected_date BETWEEN '2026-04-01'::DATE AND '2026-04-30'::DATE
-      AND mca.dte BETWEEN '2026-04-01'::DATE AND '2026-04-30'::DATE
-      AND mca.activated_at BETWEEN DATEADD('day', -30, mca.dte) AND mca.dte
+       AND mca.activated_at BETWEEN DATEADD('day', -30, mca.dte) AND mca.dte
+       AND mca.dte = '2026-05-01'::DATE--BETWEEN '2026-04-01'::DATE AND '2026-04-30'::DATE
+    WHERE wbd.injected_date = '2026-05-01'--BETWEEN '2026-04-01'::DATE AND '2026-04-30'::DATE
 ) AS base
 LEFT JOIN (
     SELECT DISTINCT
@@ -29,7 +29,7 @@ LEFT JOIN (
         consumer_id
     FROM edw.consumer.suma_consumer_links_direct
     where direct_link_types::string like '%phone%'
-    and snapshot_date BETWEEN '2026-04-01'::DATE AND '2026-04-30'::DATE
+    and snapshot_date = '2026-05-01'--BETWEEN '2026-04-01'::DATE AND '2026-04-30'::DATE
 group by all
 ) AS suma
     ON base.dte = suma.snapshot_date
@@ -45,6 +45,19 @@ group by all
    AND fmx.first_order_date BETWEEN DATEADD('day', -30, base.dte) AND base.dte
 group by all
 )
+
+
+select is_fmx_etl_eligible_flag,new_consumers_but_not_suma_flag,
+sum(wbd_eligible_users) wbd_users
+from proddb.katez.wbd_fmx_flags
+where new_consumers_but_not_suma_flag = 1 or is_fmx_etl_eligible_flag = 1
+group by 1,2
+
+
+IS_FMX_ETL_ELIGIBLE_FLAG	NEW_CONSUMERS_BUT_NOT_SUMA_FLAG	WBD_USERS
+0	1	396299
+1	1	446756
+1	0	96
 
 /*
 From Tony Caletti
