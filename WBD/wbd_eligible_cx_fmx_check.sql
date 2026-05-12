@@ -45,3 +45,46 @@ group by all
    AND fmx.first_order_date BETWEEN DATEADD('day', -30, base.dte) AND base.dte
 group by all
 )
+
+/*
+From Tony Caletti
+For fraud, we leverage this filter is_fraud = false in this table x360.prod.consumer to exclude any fraud Cx. The fraud team has more granular data sources for specific use cases, you can reach out to @Yi for more info
+For SUMA, the two main tables are identity_insights_prod.public.user_clusters and edw.consumer.suma_consumer_links_direct
+
+The first table tracks all links (strong/weak and direct/indirect) while the second table only tracks direct links (if Cx A is linked to B, and B is linked to C, A to C is an indirect link). The benefit of the second table is that it has info about the method for linking two accounts (ie. phone number vs address etc...) which can be helpful for targeting certain kinds of SUMA or follow up analysis
+*/
+For the first table, here is a below query
+with audience_clusters as (
+    select distinct
+        m.user_id,
+        uc.cluster_id
+    from my_audience m
+    left join identity_insights_prod.public.user_clusters uc
+        on m.user_id = uc.user_id
+        and uc.cluster_type = 'CX_SUMA'
+        and coalesce(uc.__is_deleted, false) = false
+)
+
+select
+    ac.user_id,
+    count(distinct cm.user_id) as suma_cluster_user_cnt
+from audience_clusters ac
+left join identity_insights_prod.public.user_clusters cm
+    on ac.cluster_id = cm.cluster_id
+    and cm.cluster_type = 'CX_SUMA'
+    and ac.user_id != cm.user_id
+    and coalesce(cm.__is_deleted, false) = false
+;
+
+--Here is one for the second table
+select
+    m.consumer_id,
+    count(distinct scld.linked_consumer_id) as directly_linked_consumer_cnt,
+    count(distinct scld.linked_user) as directly_linked_user_cnt,
+    array_agg(distinct scld.direct_link_types) within group (order by scld.direct_link_types::varchar) as direct_link_types_seen
+from <your_audience_table> m
+left join edw.consumer.suma_consumer_links_direct scld
+    on m.consumer_id = scld.consumer_id
+group by all
+;
+Message tony.caletti
