@@ -87,4 +87,4 @@ left join edw.consumer.suma_consumer_links_direct scld
     on m.consumer_id = scld.consumer_id
 group by all
 ;
-Message tony.caletti
+
