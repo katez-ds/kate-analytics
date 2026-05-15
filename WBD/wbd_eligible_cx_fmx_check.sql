@@ -101,3 +101,124 @@ left join edw.consumer.suma_consumer_links_direct scld
 group by all
 ;
 
+-- Affordability fee promo discount spend (WBD + XS + PAD) in a 7-day US window,
+-- with totals for all filtered-core US marketplace deliveries vs New Cx only.
+--
+-- New consumer cohort: first filtered-core US order-cart (is_first_ordercart)
+-- with active_date in the trailing 30 days ending at as_of_dte.
+--
+-- Source: proddb.static.df_sf_promo_discount_delivery_level (cents → USD / 100).
+--
+-- Spend window: exactly 7 inclusive calendar days [as_of_dte - 6, as_of_dte]
+-- (as_of_dte = yesterday). Grouped by PST calendar week (up to two rows if
+-- the window crosses a week boundary).
+--
+-- Tweak params in `params` CTE as needed.
+
+
+WITH params AS (
+    SELECT
+        DATEADD('day', -1, CURRENT_DATE()::DATE) AS as_of_dte,
+        DATEADD('day', -30, DATEADD('day', -1, CURRENT_DATE()::DATE)) AS new_cx_first_order_after_dte,
+        DATEADD('day', -6, DATEADD('day', -1, CURRENT_DATE()::DATE)) AS spend_start_dte
+),
+
+new_consumers AS (
+    SELECT
+        d.creator_id AS consumer_id,
+        MIN(d.active_date) AS first_order_date
+    FROM edw.finance.dimension_local_deliveries d
+    CROSS JOIN params p
+    WHERE d.is_first_ordercart = TRUE
+      AND d.is_filtered_core = TRUE
+      AND d.country_id = 1
+      AND d.active_date > p.new_cx_first_order_after_dte
+      AND d.active_date <= p.as_of_dte
+    GROUP BY d.creator_id
+),
+
+-- All US filtered-core deliveries in the 7-day window (not only New Cx).
+us_spend_deliveries AS (
+    SELECT
+        dd.creator_id AS consumer_id,
+        dd.delivery_id,
+        dd.active_date,
+        dd.created_at,
+        nc.consumer_id IS NOT NULL AS is_new_cx,
+        DATE_TRUNC(
+            'week',
+            CONVERT_TIMEZONE('UTC', 'America/Los_Angeles', dd.created_at)::DATE
+        )::DATE AS week_start_pst
+    FROM edw.finance.dimension_local_deliveries dd
+    CROSS JOIN params p
+    LEFT JOIN new_consumers nc
+        ON nc.consumer_id = dd.creator_id
+    WHERE dd.is_filtered_core = TRUE
+      AND dd.country_id = 1
+      AND dd.active_date >= p.spend_start_dte
+      AND dd.active_date <= p.as_of_dte
+      AND dd.parent_delivery_id IS NULL
+      AND dd.cancelled_at IS NULL
+      AND COALESCE(dd.is_test, FALSE) = FALSE
+      AND COALESCE(dd.is_from_store_to_us, FALSE) = FALSE
+),
+
+delivery_affordability_discounts AS (
+    SELECT
+        d.delivery_id,
+        SUM(
+            COALESCE(d.wbd_fee_promo_discount, 0)
+            + COALESCE(d.cs_fee_promo_discount, 0)
+            + COALESCE(d.pad_fee_promo_discount, 0)
+        ) AS affordability_discount_cents
+    FROM proddb.static.df_sf_promo_discount_delivery_level d
+    CROSS JOIN params p
+    INNER JOIN us_spend_deliveries sd
+        ON sd.delivery_id = d.delivery_id
+    WHERE CAST(d.created_at AS DATE) BETWEEN p.spend_start_dte AND p.as_of_dte
+    GROUP BY d.delivery_id
+)
+
+SELECT
+    --sd.week_start_pst,
+
+    /* ---- All US (filtered-core) in window ---- */
+    --COUNT(*) AS n_deliveries_us,
+    --COUNT(DISTINCT sd.consumer_id) AS n_distinct_consumers_us,
+    --SUM(IFF(COALESCE(disc.affordability_discount_cents, 0) > 0, 1, 0)) AS n_deliveries_us_with_positive_promo_discount,
+    ROUND(SUM(COALESCE(disc.affordability_discount_cents, 0)), 2) AS total_us_affordability_promo_discount_spend_usd,
+    ROUND(
+        SUM(COALESCE(disc.affordability_discount_cents, 0)) / NULLIF(COUNT(*), 0) ,
+        4
+    ) AS avg_us_affordability_promo_discount_per_delivery_usd,
+
+    /* ---- New Cx subset only (same promo definition) ---- */
+    SUM(IFF(sd.is_new_cx, 1, 0)) AS n_deliveries_new_cx,
+    COUNT(DISTINCT CASE WHEN sd.is_new_cx THEN sd.consumer_id END) AS n_distinct_new_cx_consumers_with_order,
+    SUM(IFF(sd.is_new_cx AND COALESCE(disc.affordability_discount_cents, 0) > 0, 1, 0)) AS n_deliveries_new_cx_with_positive_promo_discount,
+    ROUND(
+        SUM(IFF(sd.is_new_cx, COALESCE(disc.affordability_discount_cents, 0), 0)),
+        2
+    ) AS new_cx_affordability_promo_discount_spend_usd,
+    ROUND(
+        SUM(IFF(sd.is_new_cx, COALESCE(disc.affordability_discount_cents, 0), 0))
+        / NULLIF(SUM(IFF(sd.is_new_cx, 1, 0)), 0)
+        / 100.0,
+        4
+    ) AS avg_new_cx_affordability_promo_discount_per_delivery_usd,
+
+    /* Share of US promo spend on New Cx deliveries (by $, not by consumer) */
+    ROUND(
+        100.0 * SUM(IFF(sd.is_new_cx, COALESCE(disc.affordability_discount_cents, 0), 0))
+        / NULLIF(SUM(COALESCE(disc.affordability_discount_cents, 0)), 0),
+        2
+    ) AS pct_us_promo_discount_spend_on_new_cx_deliveries
+FROM us_spend_deliveries sd
+LEFT JOIN delivery_affordability_discounts disc
+    ON disc.delivery_id = sd.delivery_id
+
+TOTAL_US_AFFORDABILITY_PROMO_DISCOUNT_SPEND_USD
+8148831.20
+NEW_CX_AFFORDABILITY_PROMO_DISCOUNT_SPEND_USD
+266598.87
+
