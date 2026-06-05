@@ -10,14 +10,16 @@
 -- Data asks covered:
 --   ASK 1  VP per order for HOF        (high VP -> low CPIO -> stronger efficiency case)
 --   ASK 2a Promo coverage HOF vs avg   (under-covered + decelerating = stronger case)
---   ASK 2b Coverage by FUNDER          (merchant- vs marketing-funded)  -> DATA GAP, see bottom
+--   ASK 2b Coverage by FUNDER          (affordability / Mx-funded / CRM-marketing-funded)
 --   ASK 3  Avg discount/order by OF cohort -> where it DROPS OFF = candidate HOF cutoff
 --
 -- Sources (reused from the TAM / backtest tools, so they're known-good):
 --   proddb.public.dimension_deliveries          -- order grain, gov  (is_filtered_core = TRUE)
 --   proddb.public.fact_delivery_allocation      -- VP per order (matches the backtest's `ue`)
 --   proddb.mattheitz.mh_customer_authority      -- L365D OF (l360_orders), as-of order date
---   proddb.static.df_sf_promo_discount_delivery_level  -- affordability discount $ per delivery
+--   proddb.static.df_sf_promo_discount_delivery_level  -- affordability (WBD/XS/PAD) + Mx-funded (mx_funded_cx_discount) $/delivery
+--   proddb.public.fact_order_discounts_and_promotions_extended  -- CRM/marketing (campaign) funded $/delivery
+--   (funder split mirrors kate-analytics/promo_orders_overlap.sql)
 --
 -- VP/order is defined to MATCH the Sensitivity Backtest tool EXACTLY (its `ue`):
 --   ue = COALESCE(fda.variable_profit_ex_alloc,
@@ -68,17 +70,38 @@ cx_of AS (
        AND ca.acquisition_country_id = 1
 ),
 
--- Affordability discount $ per delivery.  PROGRAM split (WBD / XS / PAD) — NOT funder.
+-- Discount $ per delivery, split by FUNDER. Logic mirrors kate-analytics/promo_orders_overlap.sql:
+--   affordability program (WBD/XS/PAD) and Mx-funded (mx_funded_cx_discount) both live in
+--   df_sf_promo_discount_delivery_level; CRM (marketing/campaign) funded is derived from
+--   fact_order_discounts_and_promotions_extended (campaign-tagged FDA components).
 disc AS (
     SELECT
         d.delivery_id,
         SUM(d.wbd_fee_promo_discount + d.cs_fee_promo_discount + d.pad_fee_promo_discount) AS affordability_discount,
         SUM(d.wbd_fee_promo_discount) AS wbd_discount,
         SUM(d.cs_fee_promo_discount)  AS xs_discount,
-        SUM(d.pad_fee_promo_discount) AS pad_discount
+        SUM(d.pad_fee_promo_discount) AS pad_discount,
+        SUM(d.mx_funded_cx_discount)  AS mx_funded_discount,   -- merchant-funded
+        SUM(d.total_fee_promo_discount) AS total_discount
     FROM proddb.static.df_sf_promo_discount_delivery_level d
     JOIN base_dd b ON b.delivery_id = d.delivery_id
     GROUP BY d.delivery_id
+),
+-- CRM / marketing-team funded discount per delivery (campaign-tagged FDA components).
+crm AS (
+    SELECT delivery_id, SUM(crm_disc) AS crm_discount
+    FROM (
+        SELECT
+            e.delivery_id,
+            CASE WHEN e.campaign_id IS NOT NULL
+                 THEN COALESCE(e.FDA_OTHER_PROMOTIONS_BASE + e.FDA_PROMOTION_CATCH_ALL
+                             + e.FDA_CONSUMER_RETENTION - e.FDA_BUNDLES_PRICING_DISCOUNT, 0)
+                 ELSE 0 END AS crm_disc
+        FROM proddb.public.fact_order_discounts_and_promotions_extended e
+        JOIN base_dd b ON b.delivery_id = e.delivery_id
+    )
+    GROUP BY delivery_id
+    HAVING SUM(crm_disc) > 0          -- keep only CRM-funded deliveries (crm_ind = present)
 ),
 
 orders AS (
@@ -92,6 +115,13 @@ orders AS (
         COALESCE(dc.wbd_discount, 0)           AS wbd_discount,
         COALESCE(dc.xs_discount,  0)           AS xs_discount,
         COALESCE(dc.pad_discount, 0)           AS pad_discount,
+        COALESCE(dc.mx_funded_discount, 0)     AS mx_funded_discount,   -- merchant-funded
+        COALESCE(cr.crm_discount, 0)           AS crm_discount,         -- marketing/CRM-funded
+        COALESCE(dc.total_discount, 0)         AS total_discount,
+        -- Coverage flags per funder (order has any discount of that type).
+        IFF(COALESCE(dc.affordability_discount, 0) > 0, 1, 0) AS is_afford_order,
+        IFF(COALESCE(dc.mx_funded_discount, 0)     > 0, 1, 0) AS is_mx_order,
+        IFF(cr.delivery_id IS NOT NULL, 1, 0)                 AS is_crm_order,
         IFF(COALESCE(dc.affordability_discount, 0) > 0, 1, 0) AS is_discount_order,
         -- Fine OF bins around 20-40 so the discount/order drop-off (Ask 3) is visible.
         CASE
@@ -109,6 +139,7 @@ orders AS (
     FROM base_dd b
     JOIN cx_of o      ON o.delivery_id  = b.delivery_id
     LEFT JOIN disc dc ON dc.delivery_id = b.delivery_id
+    LEFT JOIN crm  cr ON cr.delivery_id = b.delivery_id
 )
 
 -- =============================================================================
@@ -123,10 +154,16 @@ SELECT
     COUNT(DISTINCT creator_id)        AS cx,
     AVG(vp)                           AS vp_per_order,
     AVG(gov)                          AS gov_per_order,
-    AVG(affordability_discount)       AS avg_discount_per_order,
-    AVG(is_discount_order)            AS promo_coverage,                       -- % of orders w/ any affordability discount
-    AVG(IFF(is_discount_order = 1, affordability_discount, NULL))
-                                      AS avg_discount_among_discounted,
+    -- Promo coverage by funder (ASK 2a + 2b): share of orders w/ each discount type.
+    AVG(is_afford_order)              AS afford_coverage,                      -- affordability program (WBD/XS/PAD)
+    AVG(is_mx_order)                  AS mx_coverage,                          -- merchant-funded
+    AVG(is_crm_order)                 AS crm_coverage,                         -- marketing/CRM-funded
+    -- Avg discount $/order by funder (ASK 3: where affordability drops off = cutoff).
+    AVG(affordability_discount)       AS avg_afford_disc_per_order,
+    AVG(mx_funded_discount)           AS avg_mx_disc_per_order,
+    AVG(crm_discount)                 AS avg_crm_disc_per_order,
+    AVG(IFF(is_afford_order = 1, affordability_discount, NULL))
+                                      AS avg_afford_disc_among_covered,
     AVG(wbd_discount)                 AS avg_wbd_per_order,
     AVG(xs_discount)                  AS avg_xs_per_order,
     AVG(pad_discount)                 AS avg_pad_per_order
@@ -140,26 +177,30 @@ SELECT
     COUNT(*)                          AS orders,
     COUNT(DISTINCT creator_id)        AS cx,
     AVG(vp)                           AS vp_per_order,
-    AVG(affordability_discount)       AS avg_discount_per_order,
-    AVG(is_discount_order)            AS promo_coverage
+    AVG(is_afford_order)              AS afford_coverage,
+    AVG(is_mx_order)                  AS mx_coverage,
+    AVG(is_crm_order)                 AS crm_coverage,
+    AVG(affordability_discount)       AS avg_afford_disc_per_order,
+    AVG(mx_funded_discount)           AS avg_mx_disc_per_order,
+    AVG(crm_discount)                 AS avg_crm_disc_per_order
 FROM orders
 GROUP BY ROLLUP(hof_flag)
 ORDER BY cohort;
 
 -- =============================================================================
--- ASK 2b — Promo coverage by FUNDER (merchant-funded vs marketing/company-funded)
+-- ASK 2b — Promo coverage by FUNDER (affordability / Mx-funded / CRM-marketing)
 -- -----------------------------------------------------------------------------
--- DATA GAP: df_sf_promo_discount_delivery_level splits by affordability PROGRAM
--- (WBD / XS / PAD), NOT by funding ENTITY. There is no merchant-vs-marketing
--- funder field in this source, so this cut CANNOT be produced from the tables above.
+-- IMPLEMENTED above: afford_coverage / mx_coverage / crm_coverage (and avg $/order
+-- per funder) are in BOTH the by-OF-bucket pull and the HOF-vs-ALL rollup.
+-- Funder logic mirrors kate-analytics/promo_orders_overlap.sql:
+--   * affordability = WBD + XS + PAD            (df_sf_promo_discount_delivery_level)
+--   * Mx-funded     = mx_funded_cx_discount     (same table)
+--   * CRM/marketing = campaign-tagged FDA comps (fact_order_discounts_and_promotions_extended)
+-- => "under-covered" reads off mx_coverage / crm_coverage for HOF vs ALL.
 --
--- To produce it, wire in a promotions/campaign source that carries a funding-entity /
--- cost-owner field (confirm the canonical one with Promo/Pricing data eng), e.g.:
---   <promotions table>.funding_type / cost_owner / funded_by  joined on delivery_id
---   (or campaign_id), then split `promo_coverage` and `avg_discount_per_order` by funder.
---
--- "Decelerating" (trend): add a time grain (e.g. DATE_TRUNC('week', order_date)) to the
--- GROUP BY once a funder source exists, to show HOF coverage trend over time.
+-- "Decelerating" (trend): add a time grain to chart coverage over time — e.g. add
+--   DATE_TRUNC('week', order_date) AS wk  to the SELECT + GROUP BY (optionally fixing
+--   to the HOF cohort) for week-over-week coverage by funder.
 -- =============================================================================
 
 -- =============================================================================
