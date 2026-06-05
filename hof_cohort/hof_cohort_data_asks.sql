@@ -28,12 +28,12 @@
 --   over proddb.public.dimension_deliveries WHERE is_filtered_core = TRUE.
 -- =============================================================================
 
--- Date methodology matches kate-analytics/high_OF_Cx_exploration.sql:
---   * MH / PSM snapshot = 2026-04-15 — HOF / OF / momentum are classified ON this snapshot
---   * order window      = trailing 365d ending the snapshot (2025-04-16 .. 2026-04-15)
---   (for the L90d daypart-style window instead, set window_days = 90)
-SET snapshot_dte = '2026-04-15';      -- mh_customer_authority.dte / PSM active_date
-SET window_days  = 365;               -- order-window length ending at the snapshot
+-- Date methodology:
+--   * HOF cohort is defined on the MH snapshot = 2026-04-15 (l360_orders > 30) — no order scan
+--   * behavior-metric window = the 28 days AFTER the snapshot (2026-04-16 .. 2026-05-13):
+--     classify at the snapshot, then observe promo coverage / discount / VP forward.
+SET snapshot_dte = '2026-04-15';      -- mh_customer_authority.dte / PSM active_date (cohort definition)
+SET window_days  = 28;                -- behavior-metric window length, POST the snapshot
 
 WITH params AS (
     SELECT $snapshot_dte::DATE AS snapshot_dte, $window_days::INT AS window_days
@@ -56,9 +56,11 @@ base_dd AS (
     -- absorbs lag between created_at and active_date (same pattern as the backtest's core_dd).
     LEFT JOIN proddb.public.fact_delivery_allocation fda
         ON fda.delivery_id = dd.delivery_id
-       AND fda.active_date BETWEEN DATEADD('day', -(p.window_days - 1) - 21, p.snapshot_dte)
-                               AND DATEADD('day', 21, p.snapshot_dte)
-    WHERE dd.created_at::DATE BETWEEN DATEADD('day', -(p.window_days - 1), p.snapshot_dte) AND p.snapshot_dte
+       AND fda.active_date BETWEEN DATEADD('day', -21, p.snapshot_dte)
+                               AND DATEADD('day', p.window_days + 21, p.snapshot_dte)
+    -- Behavior window = the `window_days` days AFTER the snapshot (forward-looking).
+    WHERE dd.created_at::DATE BETWEEN DATEADD('day', 1, p.snapshot_dte)
+                                  AND DATEADD('day', p.window_days, p.snapshot_dte)
       AND dd.is_filtered_core = TRUE
 ),
 
