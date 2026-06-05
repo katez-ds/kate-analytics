@@ -16,7 +16,7 @@
 -- Sources (reused from the TAM / backtest tools, so they're known-good):
 --   proddb.public.dimension_deliveries          -- order grain, gov  (is_filtered_core = TRUE)
 --   proddb.public.fact_delivery_allocation      -- VP per order (matches the backtest's `ue`)
---   proddb.mattheitz.mh_customer_authority      -- L365D OF (l360_orders), as-of order date
+--   proddb.mattheitz.mh_customer_authority      -- HOF/OF/momentum from the 2026-04-15 snapshot (l360_orders, l28_orders)
 --   proddb.static.df_sf_promo_discount_delivery_level  -- affordability (WBD/XS/PAD) + Mx-funded (mx_funded_cx_discount) $/delivery
 --   proddb.public.fact_order_discounts_and_promotions_extended  -- CRM/marketing (campaign) funded $/delivery
 --   (funder split mirrors kate-analytics/promo_orders_overlap.sql)
