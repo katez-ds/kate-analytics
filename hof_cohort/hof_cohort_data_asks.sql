@@ -196,6 +196,8 @@ SELECT
     COUNT(DISTINCT creator_id) * 1.0
         / SUM(COUNT(DISTINCT creator_id)) OVER (PARTITION BY consumer_type) AS cx_pct,   -- "Cx %"
     COUNT(*)                          AS orders,                    -- "ORDERS"
+    COUNT(*) * 1.0
+        / SUM(COUNT(*)) OVER (PARTITION BY consumer_type) AS orders_pct,   -- "% Orders"
     AVG(vp)                           AS vp_per_order,              -- "VP per Order"
     AVG(gov)                          AS gov_per_order,             -- "GOV per Order"
     AVG(is_any_promo_order)           AS promo_coverage,            -- "Promo Coverage" (Affordability+Mx+CRM)
