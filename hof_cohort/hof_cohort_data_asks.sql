@@ -69,6 +69,8 @@ base_dd AS (
 cx_cohort AS (
     SELECT
         ca.creator_id,
+        -- Classic vs DashPass at the snapshot (mirrors high_OF_Cx_exploration.sql).
+        CASE WHEN ca.dp_sub_flag_start = 1 THEN 'DashPass' ELSE 'Classic' END AS consumer_type,
         ca.l360_orders AS l365d_of,
         ca.l28_orders,
         IFF(ca.l360_orders > 30, 'HOF (L365D OF > 30)', 'Non-HOF') AS hof_flag,
@@ -139,6 +141,7 @@ orders AS (
         b.gov,
         b.vp,
         -- Cohort attributes — classified once on the snapshot (consumer-level), per high-OF methodology.
+        c.consumer_type,
         c.l365d_of,
         c.l28_orders,
         c.hof_flag,
@@ -183,6 +186,7 @@ orders AS (
 --   promo_coverage          (ASK 2a: HOF vs avg; under-covered = stronger case)
 -- =============================================================================
 SELECT
+    consumer_type,
     of_bucket,
     COUNT(*)                          AS orders,
     COUNT(DISTINCT creator_id)        AS cx,
@@ -204,14 +208,15 @@ SELECT
     AVG(xs_discount)                  AS avg_xs_per_order,
     AVG(pad_discount)                 AS avg_pad_per_order
 FROM orders
-GROUP BY of_bucket
-ORDER BY of_bucket;
+GROUP BY consumer_type, of_bucket
+ORDER BY consumer_type, of_bucket;
 
 -- =============================================================================
 -- ASK 2 (i) — OVERALL HOF: HOF (>30) vs Non-HOF vs ALL (avg). Headline coverage +
 -- VP + discount. "Under-covered" = HOF any_promo_coverage vs ALL.
 -- =============================================================================
 SELECT
+    consumer_type,
     COALESCE(hof_flag, 'ALL')         AS cohort,
     COUNT(*)                          AS orders,
     COUNT(DISTINCT creator_id)        AS cx,
@@ -224,8 +229,8 @@ SELECT
     AVG(mx_funded_discount)           AS avg_mx_disc_per_order,
     AVG(crm_discount)                 AS avg_crm_disc_per_order
 FROM orders
-GROUP BY ROLLUP(hof_flag)
-ORDER BY cohort;
+GROUP BY consumer_type, ROLLUP(hof_flag)
+ORDER BY consumer_type, cohort;
 
 -- =============================================================================
 -- DECELERATION CUT — HOF cx by OF momentum  (the "decelerating = stronger case" view)
@@ -236,6 +241,7 @@ ORDER BY cohort;
 -- and high VP/order. Logic mirrors high_OF_Cx_exploration.sql.
 -- =============================================================================
 SELECT
+    consumer_type,
     of_momentum,
     COUNT(*)                          AS orders,
     COUNT(DISTINCT creator_id)        AS cx,
@@ -249,8 +255,8 @@ SELECT
     AVG(crm_discount)                 AS avg_crm_disc_per_order
 FROM orders
 WHERE l365d_of > 30                   -- HOF only
-GROUP BY of_momentum
-ORDER BY of_momentum;
+GROUP BY consumer_type, of_momentum
+ORDER BY consumer_type, of_momentum;
 
 -- =============================================================================
 -- ASK 2 (ii) — HOF x COVERAGE breakdown: how HOF orders split across funder
@@ -258,16 +264,17 @@ ORDER BY of_momentum;
 -- how much of HOF volume each segment is; 'Uncovered' share = the under-coverage.
 -- =============================================================================
 SELECT
+    consumer_type,
     coverage_segment,
     COUNT(*)                          AS orders,
     COUNT(DISTINCT creator_id)        AS cx,
-    COUNT(*) * 1.0 / SUM(COUNT(*)) OVER ()  AS pct_of_orders,
+    COUNT(*) * 1.0 / SUM(COUNT(*)) OVER (PARTITION BY consumer_type)  AS pct_of_orders,
     AVG(vp)                           AS vp_per_order,
     AVG(affordability_discount + mx_funded_discount + crm_discount) AS avg_total_disc_per_order
 FROM orders
 WHERE l365d_of > 30                   -- HOF only
-GROUP BY coverage_segment
-ORDER BY orders DESC;
+GROUP BY consumer_type, coverage_segment
+ORDER BY consumer_type, orders DESC;
 
 -- =============================================================================
 -- ASK 2 (iii) — DECELERATING HOF x COVERAGE breakdown: same as (ii) but restricted
@@ -275,17 +282,18 @@ ORDER BY orders DESC;
 -- high VP/order = the strongest case (high-value, slipping, under-supported).
 -- =============================================================================
 SELECT
+    consumer_type,
     coverage_segment,
     COUNT(*)                          AS orders,
     COUNT(DISTINCT creator_id)        AS cx,
-    COUNT(*) * 1.0 / SUM(COUNT(*)) OVER ()  AS pct_of_orders,
+    COUNT(*) * 1.0 / SUM(COUNT(*)) OVER (PARTITION BY consumer_type)  AS pct_of_orders,
     AVG(vp)                           AS vp_per_order,
     AVG(affordability_discount + mx_funded_discount + crm_discount) AS avg_total_disc_per_order
 FROM orders
 WHERE l365d_of > 30                   -- HOF
   AND of_momentum = 'OF Drop'         -- decelerating
-GROUP BY coverage_segment
-ORDER BY orders DESC;
+GROUP BY consumer_type, coverage_segment
+ORDER BY consumer_type, orders DESC;
 
 -- =============================================================================
 -- ASK 2b — Promo coverage by FUNDER (affordability / Mx-funded / CRM-marketing)
