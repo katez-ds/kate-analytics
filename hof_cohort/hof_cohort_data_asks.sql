@@ -13,15 +13,17 @@
 --   ASK 2b Coverage by FUNDER          (merchant- vs marketing-funded)  -> DATA GAP, see bottom
 --   ASK 3  Avg discount/order by OF cohort -> where it DROPS OFF = candidate HOF cutoff
 --
--- Sources (all reused from the TAM / backtest tools, so they're known-good):
---   edw.finance.dimension_deliveries            -- order grain, gov, VP
+-- Sources (reused from the TAM / backtest tools, so they're known-good):
+--   proddb.public.dimension_deliveries          -- order grain, gov  (is_filtered_core = TRUE)
+--   proddb.public.fact_delivery_allocation      -- VP per order (matches the backtest's `ue`)
 --   proddb.mattheitz.mh_customer_authority      -- L365D OF (l360_orders), as-of order date
 --   proddb.static.df_sf_promo_discount_delivery_level  -- affordability discount $ per delivery
 --
--- NOTE (verify on first run): VP column on dimension_deliveries is assumed to be
---   `variable_profit`. If that's not the name, the canonical VP/order field is
---   `ue` on proddb.static.us_universal_dv_core_dd (used by the universal dash), or
---   see pricing_affordability_master_metrics.md for the agreed VP definition.
+-- VP/order is defined to MATCH the Sensitivity Backtest tool EXACTLY (its `ue`):
+--   ue = COALESCE(fda.variable_profit_ex_alloc,
+--                 fda.variable_profit + fda.payment_to_customers)
+--   from proddb.public.fact_delivery_allocation (joined on delivery_id, active_date-bounded),
+--   over proddb.public.dimension_deliveries WHERE is_filtered_core = TRUE.
 -- =============================================================================
 
 SET window_days = 90;                 -- trailing window for the pull (edit as needed)
@@ -31,21 +33,27 @@ WITH params AS (
     SELECT $window_days::INT AS window_days, $end_dte::DATE AS end_dte
 ),
 
--- Order (delivery) grain over the window.
+-- Order (delivery) grain over the window. Base + VP aligned to the Sensitivity
+-- Backtest tool: proddb.public.dimension_deliveries (is_filtered_core = TRUE),
+-- VP from fact_delivery_allocation (identical COALESCE to the backtest's `ue`).
 base_dd AS (
     SELECT
         dd.delivery_id,
         dd.creator_id,
         dd.created_at::DATE        AS order_date,
         dd.gov,
-        dd.variable_profit         AS vp   -- <<< VERIFY column name (see header NOTE)
-    FROM edw.finance.dimension_deliveries dd
-    CROSS JOIN params p
+        COALESCE(fda.variable_profit_ex_alloc,
+                 fda.variable_profit + fda.payment_to_customers) AS vp
+    FROM params p
+    CROSS JOIN proddb.public.dimension_deliveries dd
+    -- active_date-bounded so fact_delivery_allocation (~686M rows) partition-prunes; ±21d buffer
+    -- absorbs lag between created_at and active_date (same pattern as the backtest's core_dd).
+    LEFT JOIN proddb.public.fact_delivery_allocation fda
+        ON fda.delivery_id = dd.delivery_id
+       AND fda.active_date BETWEEN DATEADD('day', -(p.window_days - 1) - 21, p.end_dte)
+                               AND DATEADD('day', 21, p.end_dte)
     WHERE dd.created_at::DATE BETWEEN DATEADD('day', -(p.window_days - 1), p.end_dte) AND p.end_dte
-      -- Add the team's standard delivery filters per pricing_affordability_master_metrics.md
-      -- as appropriate, e.g.:
-      -- AND dd.is_filtered_core   = TRUE
-      -- AND dd.is_consumer_pickup = FALSE
+      AND dd.is_filtered_core = TRUE
 ),
 
 -- L365D order frequency as-of the order date (HOF = l360_orders > 30).
