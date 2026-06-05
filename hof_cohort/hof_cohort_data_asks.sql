@@ -77,14 +77,14 @@ cx_cohort AS (
         -- Fine OF bins around 20-40 so the discount/order drop-off (Ask 3) is visible.
         CASE
             WHEN ca.l360_orders IS NULL THEN 'unknown'
-            WHEN ca.l360_orders <= 0    THEN '00_zero'
-            WHEN ca.l360_orders <= 5    THEN '01_1-5'
-            WHEN ca.l360_orders <= 10   THEN '02_6-10'
-            WHEN ca.l360_orders <= 20   THEN '03_11-20'
-            WHEN ca.l360_orders <= 30   THEN '04_21-30'
-            WHEN ca.l360_orders <= 50   THEN '05_31-50'
-            WHEN ca.l360_orders <= 100  THEN '06_51-100'
-            ELSE                            '07_100+'
+            WHEN ca.l360_orders <= 0    THEN '1. 0'
+            WHEN ca.l360_orders <= 5    THEN '2. 1-5'
+            WHEN ca.l360_orders <= 10   THEN '3. 6-10'
+            WHEN ca.l360_orders <= 20   THEN '4. 11-20'
+            WHEN ca.l360_orders <= 30   THEN '5. 21-30'
+            WHEN ca.l360_orders <= 50   THEN '6. 31-50'
+            WHEN ca.l360_orders <= 100  THEN '7. 51-100'
+            ELSE                            '8. 100+'
         END AS of_bucket,
         -- OF momentum / deceleration: recent weekly rate (L28/4) vs long-run (L360/360*7).
         CASE
@@ -185,28 +185,26 @@ orders AS (
 --   avg_discount_per_order  (ASK 3: where it drops off = candidate cutoff)
 --   promo_coverage          (ASK 2a: HOF vs avg; under-covered = stronger case)
 -- =============================================================================
+-- Column order + naming follow the "Followups from Gayatri" table in the High OF Cx
+-- Exploration doc: L365D OF, Cx, Cx %, ORDERS, VP/Order, GOV/Order, Promo Coverage
+-- (= Affordability+Mx+CRM), Affordability/Mx Funded/CRM Coverage, then Avg discount $/order
+-- per funder. (consumer_type kept as the leading Classic-vs-DashPass breakdown.)
 SELECT
     consumer_type,
-    of_bucket,
-    COUNT(*)                          AS orders,
-    COUNT(DISTINCT creator_id)        AS cx,
-    AVG(vp)                           AS vp_per_order,
-    AVG(gov)                          AS gov_per_order,
-    -- Promo coverage (ASK 2a + 2b). any_promo_coverage = the combined affordability+Mx+CRM
-    -- coverage that defines "under-covered" (compare HOF vs ALL); then the per-funder split.
-    AVG(is_any_promo_order)           AS any_promo_coverage,                   -- affordability + Mx + CRM (union)
-    AVG(is_afford_order)              AS afford_coverage,                      -- affordability program (WBD/XS/PAD)
-    AVG(is_mx_order)                  AS mx_coverage,                          -- merchant-funded
-    AVG(is_crm_order)                 AS crm_coverage,                         -- marketing/CRM-funded
-    -- Avg discount $/order by funder (ASK 3: where affordability drops off = cutoff).
-    AVG(affordability_discount)       AS avg_afford_disc_per_order,
-    AVG(mx_funded_discount)           AS avg_mx_disc_per_order,
-    AVG(crm_discount)                 AS avg_crm_disc_per_order,
-    AVG(IFF(is_afford_order = 1, affordability_discount, NULL))
-                                      AS avg_afford_disc_among_covered,
-    AVG(wbd_discount)                 AS avg_wbd_per_order,
-    AVG(xs_discount)                  AS avg_xs_per_order,
-    AVG(pad_discount)                 AS avg_pad_per_order
+    of_bucket                         AS l365d_of,                  -- "L365D OF"
+    COUNT(DISTINCT creator_id)        AS cx,                        -- "Cx"
+    COUNT(DISTINCT creator_id) * 1.0
+        / SUM(COUNT(DISTINCT creator_id)) OVER (PARTITION BY consumer_type) AS cx_pct,   -- "Cx %"
+    COUNT(*)                          AS orders,                    -- "ORDERS"
+    AVG(vp)                           AS vp_per_order,              -- "VP per Order"
+    AVG(gov)                          AS gov_per_order,             -- "GOV per Order"
+    AVG(is_any_promo_order)           AS promo_coverage,            -- "Promo Coverage" (Affordability+Mx+CRM)
+    AVG(is_afford_order)              AS affordability_coverage,    -- "Affordability Coverage"
+    AVG(is_mx_order)                  AS mx_funded_coverage,        -- "Mx Funded Coverage"
+    AVG(is_crm_order)                 AS crm_coverage,              -- "CRM Coverage"
+    AVG(affordability_discount)       AS avg_affordability_discount,-- "Avg. Affordability Discount"
+    AVG(mx_funded_discount)           AS avg_mx_funded_discount,    -- "Avg. Mx Funded Discount"
+    AVG(crm_discount)                 AS avg_crm_discount           -- "Avg. CRM Discount"
 FROM orders
 GROUP BY consumer_type, of_bucket
 ORDER BY consumer_type, of_bucket;
