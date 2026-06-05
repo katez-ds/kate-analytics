@@ -122,7 +122,10 @@ orders AS (
         IFF(COALESCE(dc.affordability_discount, 0) > 0, 1, 0) AS is_afford_order,
         IFF(COALESCE(dc.mx_funded_discount, 0)     > 0, 1, 0) AS is_mx_order,
         IFF(cr.delivery_id IS NOT NULL, 1, 0)                 AS is_crm_order,
-        IFF(COALESCE(dc.affordability_discount, 0) > 0, 1, 0) AS is_discount_order,
+        -- Combined coverage: order has ANY funded discount (affordability OR Mx OR CRM).
+        IFF(COALESCE(dc.affordability_discount, 0) > 0
+            OR COALESCE(dc.mx_funded_discount, 0) > 0
+            OR cr.delivery_id IS NOT NULL, 1, 0)              AS is_any_promo_order,
         -- Fine OF bins around 20-40 so the discount/order drop-off (Ask 3) is visible.
         CASE
             WHEN o.l365d_of IS NULL THEN 'unknown'
@@ -154,7 +157,9 @@ SELECT
     COUNT(DISTINCT creator_id)        AS cx,
     AVG(vp)                           AS vp_per_order,
     AVG(gov)                          AS gov_per_order,
-    -- Promo coverage by funder (ASK 2a + 2b): share of orders w/ each discount type.
+    -- Promo coverage (ASK 2a + 2b). any_promo_coverage = the combined affordability+Mx+CRM
+    -- coverage that defines "under-covered" (compare HOF vs ALL); then the per-funder split.
+    AVG(is_any_promo_order)           AS any_promo_coverage,                   -- affordability + Mx + CRM (union)
     AVG(is_afford_order)              AS afford_coverage,                      -- affordability program (WBD/XS/PAD)
     AVG(is_mx_order)                  AS mx_coverage,                          -- merchant-funded
     AVG(is_crm_order)                 AS crm_coverage,                         -- marketing/CRM-funded
@@ -177,6 +182,7 @@ SELECT
     COUNT(*)                          AS orders,
     COUNT(DISTINCT creator_id)        AS cx,
     AVG(vp)                           AS vp_per_order,
+    AVG(is_any_promo_order)           AS any_promo_coverage,                   -- affordability + Mx + CRM (under-covered = HOF vs ALL here)
     AVG(is_afford_order)              AS afford_coverage,
     AVG(is_mx_order)                  AS mx_coverage,
     AVG(is_crm_order)                 AS crm_coverage,
@@ -196,7 +202,8 @@ ORDER BY cohort;
 --   * affordability = WBD + XS + PAD            (df_sf_promo_discount_delivery_level)
 --   * Mx-funded     = mx_funded_cx_discount     (same table)
 --   * CRM/marketing = campaign-tagged FDA comps (fact_order_discounts_and_promotions_extended)
--- => "under-covered" reads off mx_coverage / crm_coverage for HOF vs ALL.
+-- => "under-covered" reads off any_promo_coverage (affordability + Mx + CRM, union) for
+--    HOF vs ALL; the per-funder afford/mx/crm columns show which funder drives the gap.
 --
 -- "Decelerating" (trend): add a time grain to chart coverage over time — e.g. add
 --   DATE_TRUNC('week', order_date) AS wk  to the SELECT + GROUP BY (optionally fixing
