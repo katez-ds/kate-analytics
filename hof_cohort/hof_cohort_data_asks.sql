@@ -122,6 +122,16 @@ orders AS (
             ELSE 'OF Drop'
         END AS of_momentum,
         IFF(o.l365d_of / 360.0 * 7 > o.l28_orders / 4.0, 1, 0) AS is_of_drop,
+        -- Funder coverage segment (overlap-aware; 'Uncovered' = no funded discount).
+        CASE
+            WHEN COALESCE(dc.affordability_discount, 0) = 0
+             AND COALESCE(dc.mx_funded_discount, 0) = 0
+             AND cr.delivery_id IS NULL THEN 'Uncovered'
+            ELSE CONCAT_WS('+',
+                    IFF(COALESCE(dc.affordability_discount, 0) > 0, 'Affordability', NULL),
+                    IFF(COALESCE(dc.mx_funded_discount, 0) > 0,     'Mx',            NULL),
+                    IFF(cr.delivery_id IS NOT NULL,                 'CRM',           NULL))
+        END AS coverage_segment,
         COALESCE(dc.affordability_discount, 0) AS affordability_discount,
         COALESCE(dc.wbd_discount, 0)           AS wbd_discount,
         COALESCE(dc.xs_discount,  0)           AS xs_discount,
@@ -187,7 +197,10 @@ FROM orders
 GROUP BY of_bucket
 ORDER BY of_bucket;
 
--- HOF (>30) vs Non-HOF vs grand-total rollup — same headline metrics.
+-- =============================================================================
+-- ASK 2 (i) — OVERALL HOF: HOF (>30) vs Non-HOF vs ALL (avg). Headline coverage +
+-- VP + discount. "Under-covered" = HOF any_promo_coverage vs ALL.
+-- =============================================================================
 SELECT
     COALESCE(hof_flag, 'ALL')         AS cohort,
     COUNT(*)                          AS orders,
@@ -228,6 +241,41 @@ FROM orders
 WHERE l365d_of > 30                   -- HOF only
 GROUP BY of_momentum
 ORDER BY of_momentum;
+
+-- =============================================================================
+-- ASK 2 (ii) — HOF x COVERAGE breakdown: how HOF orders split across funder
+-- coverage (overlap-aware; 'Uncovered' = no funded discount). pct_of_orders shows
+-- how much of HOF volume each segment is; 'Uncovered' share = the under-coverage.
+-- =============================================================================
+SELECT
+    coverage_segment,
+    COUNT(*)                          AS orders,
+    COUNT(DISTINCT creator_id)        AS cx,
+    COUNT(*) * 1.0 / SUM(COUNT(*)) OVER ()  AS pct_of_orders,
+    AVG(vp)                           AS vp_per_order,
+    AVG(affordability_discount + mx_funded_discount + crm_discount) AS avg_total_disc_per_order
+FROM orders
+WHERE l365d_of > 30                   -- HOF only
+GROUP BY coverage_segment
+ORDER BY orders DESC;
+
+-- =============================================================================
+-- ASK 2 (iii) — DECELERATING HOF x COVERAGE breakdown: same as (ii) but restricted
+-- to decelerating HOF (of_momentum = 'OF Drop'). High 'Uncovered' share here +
+-- high VP/order = the strongest case (high-value, slipping, under-supported).
+-- =============================================================================
+SELECT
+    coverage_segment,
+    COUNT(*)                          AS orders,
+    COUNT(DISTINCT creator_id)        AS cx,
+    COUNT(*) * 1.0 / SUM(COUNT(*)) OVER ()  AS pct_of_orders,
+    AVG(vp)                           AS vp_per_order,
+    AVG(affordability_discount + mx_funded_discount + crm_discount) AS avg_total_disc_per_order
+FROM orders
+WHERE l365d_of > 30                   -- HOF
+  AND of_momentum = 'OF Drop'         -- decelerating
+GROUP BY coverage_segment
+ORDER BY orders DESC;
 
 -- =============================================================================
 -- ASK 2b — Promo coverage by FUNDER (affordability / Mx-funded / CRM-marketing)
