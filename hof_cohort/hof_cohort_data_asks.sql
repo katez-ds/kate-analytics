@@ -28,11 +28,15 @@
 --   over proddb.public.dimension_deliveries WHERE is_filtered_core = TRUE.
 -- =============================================================================
 
-SET window_days = 90;                 -- trailing window for the pull (edit as needed)
-SET end_dte     = CURRENT_DATE - 1;   -- last full day
+-- Date methodology matches kate-analytics/high_OF_Cx_exploration.sql:
+--   * MH / PSM snapshot = 2026-04-15 — HOF / OF / momentum are classified ON this snapshot
+--   * order window      = trailing 365d ending the snapshot (2025-04-16 .. 2026-04-15)
+--   (for the L90d daypart-style window instead, set window_days = 90)
+SET snapshot_dte = '2026-04-15';      -- mh_customer_authority.dte / PSM active_date
+SET window_days  = 365;               -- order-window length ending at the snapshot
 
 WITH params AS (
-    SELECT $window_days::INT AS window_days, $end_dte::DATE AS end_dte
+    SELECT $snapshot_dte::DATE AS snapshot_dte, $window_days::INT AS window_days
 ),
 
 -- Order (delivery) grain over the window. Base + VP aligned to the Sensitivity
@@ -52,23 +56,44 @@ base_dd AS (
     -- absorbs lag between created_at and active_date (same pattern as the backtest's core_dd).
     LEFT JOIN proddb.public.fact_delivery_allocation fda
         ON fda.delivery_id = dd.delivery_id
-       AND fda.active_date BETWEEN DATEADD('day', -(p.window_days - 1) - 21, p.end_dte)
-                               AND DATEADD('day', 21, p.end_dte)
-    WHERE dd.created_at::DATE BETWEEN DATEADD('day', -(p.window_days - 1), p.end_dte) AND p.end_dte
+       AND fda.active_date BETWEEN DATEADD('day', -(p.window_days - 1) - 21, p.snapshot_dte)
+                               AND DATEADD('day', 21, p.snapshot_dte)
+    WHERE dd.created_at::DATE BETWEEN DATEADD('day', -(p.window_days - 1), p.snapshot_dte) AND p.snapshot_dte
       AND dd.is_filtered_core = TRUE
 ),
 
--- L365D order frequency as-of the order date (HOF = l360_orders > 30).
-cx_of AS (
+-- HOF / OF / momentum classified on the FIXED MH snapshot (matches high_OF_Cx_exploration.sql):
+-- one row per consumer at snapshot_dte, attached to all their in-window orders below.
+cx_cohort AS (
     SELECT
-        a.delivery_id,
+        ca.creator_id,
         ca.l360_orders AS l365d_of,
-        ca.l28_orders                       -- recent rate, for OF-drop / deceleration
-    FROM base_dd a
-    LEFT JOIN proddb.mattheitz.mh_customer_authority ca
-        ON ca.creator_id            = a.creator_id
-       AND ca.dte                   = a.order_date
-       AND ca.acquisition_country_id = 1
+        ca.l28_orders,
+        IFF(ca.l360_orders > 30, 'HOF (L365D OF > 30)', 'Non-HOF') AS hof_flag,
+        -- Fine OF bins around 20-40 so the discount/order drop-off (Ask 3) is visible.
+        CASE
+            WHEN ca.l360_orders IS NULL THEN 'unknown'
+            WHEN ca.l360_orders <= 0    THEN '00_zero'
+            WHEN ca.l360_orders <= 5    THEN '01_1-5'
+            WHEN ca.l360_orders <= 10   THEN '02_6-10'
+            WHEN ca.l360_orders <= 20   THEN '03_11-20'
+            WHEN ca.l360_orders <= 30   THEN '04_21-30'
+            WHEN ca.l360_orders <= 50   THEN '05_31-50'
+            WHEN ca.l360_orders <= 100  THEN '06_51-100'
+            ELSE                            '07_100+'
+        END AS of_bucket,
+        -- OF momentum / deceleration: recent weekly rate (L28/4) vs long-run (L360/360*7).
+        CASE
+            WHEN ca.l28_orders IS NULL OR ca.l360_orders IS NULL THEN 'unknown'
+            WHEN ca.l360_orders / 360.0 * 7 = ca.l28_orders / 4.0 THEN 'OF Same'
+            WHEN ca.l360_orders / 360.0 * 7 < ca.l28_orders / 4.0 THEN 'OF Increase'
+            ELSE 'OF Drop'
+        END AS of_momentum,
+        IFF(ca.l360_orders / 360.0 * 7 > ca.l28_orders / 4.0, 1, 0) AS is_of_drop
+    FROM proddb.mattheitz.mh_customer_authority ca
+    CROSS JOIN params p
+    WHERE ca.dte = p.snapshot_dte
+      AND ca.acquisition_country_id = 1
 ),
 
 -- Discount $ per delivery, split by FUNDER. Logic mirrors kate-analytics/promo_orders_overlap.sql:
@@ -111,17 +136,13 @@ orders AS (
         b.creator_id,
         b.gov,
         b.vp,
-        o.l365d_of,
-        o.l28_orders,
-        -- OF momentum / deceleration (mirrors high_OF_Cx_exploration.sql): recent weekly
-        -- rate (L28/4) vs long-run weekly rate (L360/360*7). "OF Drop" = decelerating.
-        CASE
-            WHEN o.l28_orders IS NULL OR o.l365d_of IS NULL THEN 'unknown'
-            WHEN o.l365d_of / 360.0 * 7 = o.l28_orders / 4.0 THEN 'OF Same'
-            WHEN o.l365d_of / 360.0 * 7 < o.l28_orders / 4.0 THEN 'OF Increase'
-            ELSE 'OF Drop'
-        END AS of_momentum,
-        IFF(o.l365d_of / 360.0 * 7 > o.l28_orders / 4.0, 1, 0) AS is_of_drop,
+        -- Cohort attributes — classified once on the snapshot (consumer-level), per high-OF methodology.
+        c.l365d_of,
+        c.l28_orders,
+        c.hof_flag,
+        c.of_bucket,
+        c.of_momentum,
+        c.is_of_drop,
         -- Funder coverage segment (overlap-aware; 'Uncovered' = no funded discount).
         CASE
             WHEN COALESCE(dc.affordability_discount, 0) = 0
@@ -146,22 +167,9 @@ orders AS (
         -- Combined coverage: order has ANY funded discount (affordability OR Mx OR CRM).
         IFF(COALESCE(dc.affordability_discount, 0) > 0
             OR COALESCE(dc.mx_funded_discount, 0) > 0
-            OR cr.delivery_id IS NOT NULL, 1, 0)              AS is_any_promo_order,
-        -- Fine OF bins around 20-40 so the discount/order drop-off (Ask 3) is visible.
-        CASE
-            WHEN o.l365d_of IS NULL THEN 'unknown'
-            WHEN o.l365d_of <= 0    THEN '00_zero'
-            WHEN o.l365d_of <= 5    THEN '01_1-5'
-            WHEN o.l365d_of <= 10   THEN '02_6-10'
-            WHEN o.l365d_of <= 20   THEN '03_11-20'
-            WHEN o.l365d_of <= 30   THEN '04_21-30'
-            WHEN o.l365d_of <= 50   THEN '05_31-50'
-            WHEN o.l365d_of <= 100  THEN '06_51-100'
-            ELSE                         '07_100+'
-        END AS of_bucket,
-        IFF(o.l365d_of > 30, 'HOF (L365D OF > 30)', 'Non-HOF') AS hof_flag
+            OR cr.delivery_id IS NOT NULL, 1, 0)              AS is_any_promo_order
     FROM base_dd b
-    JOIN cx_of o      ON o.delivery_id  = b.delivery_id
+    JOIN cx_cohort c  ON c.creator_id  = b.creator_id      -- snapshot cohort (INNER: in-snapshot consumers only)
     LEFT JOIN disc dc ON dc.delivery_id = b.delivery_id
     LEFT JOIN crm  cr ON cr.delivery_id = b.delivery_id
 )
