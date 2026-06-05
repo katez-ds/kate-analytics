@@ -9,7 +9,7 @@
 --
 -- Data asks covered:
 --   ASK 1  VP per order for HOF        (high VP -> low CPIO -> stronger efficiency case)
---   ASK 2a Promo coverage HOF vs avg   (under-covered + decelerating = stronger case)
+--   ASK 2a Promo coverage HOF vs avg   (under-covered + decelerating[= recent OF drop] = stronger case)
 --   ASK 2b Coverage by FUNDER          (affordability / Mx-funded / CRM-marketing-funded)
 --   ASK 3  Avg discount/order by OF cohort -> where it DROPS OFF = candidate HOF cutoff
 --
@@ -62,7 +62,8 @@ base_dd AS (
 cx_of AS (
     SELECT
         a.delivery_id,
-        ca.l360_orders AS l365d_of
+        ca.l360_orders AS l365d_of,
+        ca.l28_orders                       -- recent rate, for OF-drop / deceleration
     FROM base_dd a
     LEFT JOIN proddb.mattheitz.mh_customer_authority ca
         ON ca.creator_id            = a.creator_id
@@ -111,6 +112,16 @@ orders AS (
         b.gov,
         b.vp,
         o.l365d_of,
+        o.l28_orders,
+        -- OF momentum / deceleration (mirrors high_OF_Cx_exploration.sql): recent weekly
+        -- rate (L28/4) vs long-run weekly rate (L360/360*7). "OF Drop" = decelerating.
+        CASE
+            WHEN o.l28_orders IS NULL OR o.l365d_of IS NULL THEN 'unknown'
+            WHEN o.l365d_of / 360.0 * 7 = o.l28_orders / 4.0 THEN 'OF Same'
+            WHEN o.l365d_of / 360.0 * 7 < o.l28_orders / 4.0 THEN 'OF Increase'
+            ELSE 'OF Drop'
+        END AS of_momentum,
+        IFF(o.l365d_of / 360.0 * 7 > o.l28_orders / 4.0, 1, 0) AS is_of_drop,
         COALESCE(dc.affordability_discount, 0) AS affordability_discount,
         COALESCE(dc.wbd_discount, 0)           AS wbd_discount,
         COALESCE(dc.xs_discount,  0)           AS xs_discount,
@@ -194,6 +205,31 @@ GROUP BY ROLLUP(hof_flag)
 ORDER BY cohort;
 
 -- =============================================================================
+-- DECELERATION CUT — HOF cx by OF momentum  (the "decelerating = stronger case" view)
+-- -----------------------------------------------------------------------------
+-- Restricts to HOF (L365D OF > 30) and splits by OF momentum. "OF Drop" = recent
+-- weekly rate (L28/4) below long-run (L360/360*7) = decelerating high-OF cx.
+-- Stronger case = HOF + OF Drop that is ALSO under-covered (low any_promo_coverage)
+-- and high VP/order. Logic mirrors high_OF_Cx_exploration.sql.
+-- =============================================================================
+SELECT
+    of_momentum,
+    COUNT(*)                          AS orders,
+    COUNT(DISTINCT creator_id)        AS cx,
+    AVG(vp)                           AS vp_per_order,
+    AVG(is_any_promo_order)           AS any_promo_coverage,   -- under-covered?
+    AVG(is_afford_order)              AS afford_coverage,
+    AVG(is_mx_order)                  AS mx_coverage,
+    AVG(is_crm_order)                 AS crm_coverage,
+    AVG(affordability_discount)       AS avg_afford_disc_per_order,
+    AVG(mx_funded_discount)           AS avg_mx_disc_per_order,
+    AVG(crm_discount)                 AS avg_crm_disc_per_order
+FROM orders
+WHERE l365d_of > 30                   -- HOF only
+GROUP BY of_momentum
+ORDER BY of_momentum;
+
+-- =============================================================================
 -- ASK 2b — Promo coverage by FUNDER (affordability / Mx-funded / CRM-marketing)
 -- -----------------------------------------------------------------------------
 -- IMPLEMENTED above: afford_coverage / mx_coverage / crm_coverage (and avg $/order
@@ -205,9 +241,9 @@ ORDER BY cohort;
 -- => "under-covered" reads off any_promo_coverage (affordability + Mx + CRM, union) for
 --    HOF vs ALL; the per-funder afford/mx/crm columns show which funder drives the gap.
 --
--- "Decelerating" (trend): add a time grain to chart coverage over time — e.g. add
---   DATE_TRUNC('week', order_date) AS wk  to the SELECT + GROUP BY (optionally fixing
---   to the HOF cohort) for week-over-week coverage by funder.
+-- "Decelerating" = HOF cx whose recent order frequency has DROPPED (recent weekly rate
+--   L28/4 below long-run L360/360*7) — see the DECELERATION CUT query above
+--   (of_momentum = 'OF Drop'). Stronger case = HOF + OF Drop + under-covered + high VP.
 -- =============================================================================
 
 -- =============================================================================
