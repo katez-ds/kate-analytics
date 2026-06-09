@@ -1300,4 +1300,131 @@ select
 from pen 
 
 
+-- Order Rate Time Series
 
+-- Query A: Weekly OR Lift — Overall, fixed cohort first_exposed BETWEEN 2026-03-12 and 2026-04-11
+with
+  be as (
+    select a.*
+    from static.us_universal_dv_a_be a
+    join proddb.static.wbd_experiment_exposure b
+         on a.user_id = b.user_id and b.tag_renamed = 'Treatment'
+    join proddb.public.FACT_DYNAMIC_AUDIENCE_WBD_ORDER_FREQUENCY_L365D c
+         on c.consumer_id = a.user_id
+        and c.injected_date = a.first_exposed::date
+    where a.first_exposed::date between '2026-03-12' and '2026-04-11'
+    group by all
+  ),
+  core_dd as (
+    select * from static.us_universal_dv_core_dd
+  ),
+  weeks as (
+    select column1 as week_idx
+    from (values (0),(1),(2),(3),(4),(5),(6),(7)) v
+  ),
+  cx_weeks as (
+    select
+      a.tag_renamed,
+      a.user_id as consumer_id,
+      w.week_idx,
+      dateadd(day, 7 *  w.week_idx,      a.first_exposed::date) as week_start,
+      dateadd(day, 7 * (w.week_idx + 1), a.first_exposed::date) as week_end_exclusive
+    from be a
+    cross join weeks w
+  ),
+  per_week as (
+    select
+      cw.tag_renamed as bucket,
+      cw.week_idx,
+      count(distinct cw.consumer_id) as cx,
+      count(distinct case when c.is_filtered_core = 1 then c.delivery_id end) as volume,
+      volume / nullif(cx, 0.0) as order_rate
+    from cx_weeks cw
+    left join core_dd c
+      on c.creator_id  = cw.consumer_id
+     and c.created_at >= cw.week_start
+     and c.created_at <  cw.week_end_exclusive
+    group by 1, 2
+  )
+select
+  week_idx,
+      max(case when bucket = 'Control'   then order_rate end)
+    / max(case when bucket = 'Treatment' then order_rate end) - 1 as "Order Rate Lift"
+from per_week
+group by week_idx
+order by week_idx
+
+-- Query B (pivoted): Weekly OR Lift — by Exposed Tenure as columns
+-- Fixed cohort: first_exposed BETWEEN 2026-03-12 and 2026-04-11
+with
+  be as (
+    select a.*, b.first_exposed as old_first_exposed
+    from static.us_universal_dv_a_be a
+    join proddb.static.wbd_experiment_exposure b
+         on a.user_id = b.user_id and b.tag_renamed = 'Treatment'
+    join proddb.public.FACT_DYNAMIC_AUDIENCE_WBD_ORDER_FREQUENCY_L365D c
+         on c.consumer_id = a.user_id
+        and c.injected_date = a.first_exposed::date
+    where a.first_exposed::date between '2026-03-12' and '2026-04-11'
+    group by all
+  ),
+  core_dd as (
+    select * from static.us_universal_dv_core_dd
+  ),
+  weeks as (
+    select column1 as week_idx
+    from (values (0),(1),(2),(3),(4),(5),(6),(7)) v
+  ),
+  cx_weeks as (
+    select
+      a.tag_renamed,
+      a.user_id as consumer_id,
+      case
+        when datediff(day, a.old_first_exposed, a.first_exposed) <=   90 then '1. <=3 Months'
+        when datediff(day, a.old_first_exposed, a.first_exposed) <=  365 then '2. 3-12 Months'
+        when datediff(day, a.old_first_exposed, a.first_exposed) <=  730 then '3. 1-2 Years'
+        when datediff(day, a.old_first_exposed, a.first_exposed) <= 1095 then '4. 2-3 Years'
+        when datediff(day, a.old_first_exposed, a.first_exposed) <= 1460 then '5. 3-4 Years'
+        else                                                                  '6. >4 Years'
+      end as tenure_segment,
+      w.week_idx,
+      dateadd(day, 7 *  w.week_idx,      a.first_exposed::date) as week_start,
+      dateadd(day, 7 * (w.week_idx + 1), a.first_exposed::date) as week_end_exclusive
+    from be a
+    cross join weeks w
+  ),
+  per_week as (
+    select
+      cw.tag_renamed as bucket,
+      cw.tenure_segment,
+      cw.week_idx,
+      count(distinct cw.consumer_id) as cx,
+      count(distinct case when c.is_filtered_core = 1 then c.delivery_id end) as volume,
+      volume / nullif(cx, 0.0) as order_rate
+    from cx_weeks cw
+    left join core_dd c
+      on c.creator_id  = cw.consumer_id
+     and c.created_at >= cw.week_start
+     and c.created_at <  cw.week_end_exclusive
+    group by 1, 2, 3
+  ),
+  lift_per_segment as (
+    select
+      tenure_segment,
+      week_idx,
+          max(case when bucket = 'Control'   then order_rate end)
+        / max(case when bucket = 'Treatment' then order_rate end) - 1 as or_lift
+    from per_week
+    group by tenure_segment, week_idx
+  )
+select
+  week_idx,
+  max(case when tenure_segment = '1. <=3 Months'  then or_lift end) as "<=3 Months",
+  max(case when tenure_segment = '2. 3-12 Months' then or_lift end) as "3-12 Months",
+  max(case when tenure_segment = '3. 1-2 Years'   then or_lift end) as "1-2 Years",
+  max(case when tenure_segment = '4. 2-3 Years'   then or_lift end) as "2-3 Years",
+  max(case when tenure_segment = '5. 3-4 Years'   then or_lift end) as "3-4 Years",
+  max(case when tenure_segment = '6. >4 Years'    then or_lift end) as ">4 Years"
+from lift_per_segment
+group by week_idx
+order by week_idx
