@@ -2,7 +2,7 @@
 -- Control vs Treatment
 set exp_name = 'discount_engine_deals_us_growth';
 set start_time = '2026-04-09'::date;
-set end_time = '2026-04-09'::date;
+set end_time = '2026-04-15'::date;
 set segment = 'Users';
 
 with universal_be as (
@@ -36,6 +36,7 @@ and (
     (event_properties:container::string in ('merchandisingunit_component_store_carousel', 'merchandisingunit_component_store_carousel_uc') 
 and event_properties:container_id::string = '60e58852-64bb-49a4-be75-9f1ed482b487')
 or (event_properties:container_id::string = 'pad_gtm_v3_t1')
+or (event_properties:container_id::string = 'discount_engine_deals_v1_us')
 )
 --and platform != 'web'
   --and country_id = {{country}}
@@ -57,7 +58,7 @@ order by all
 -- Daily Trended
 
 set start_time = '2026-04-09'::date;
-set end_time = '2026-04-09'::date;
+set end_time = '2026-04-15'::date;
 
 
 with pad_impressions as (
