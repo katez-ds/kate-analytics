@@ -2,6 +2,7 @@
 -- HOF cohort — recent-OF-deceleration cut, by L180D weekly order-frequency band
 -- =============================================================================
 -- Ask (snapshot = 2026-07-01):
+--   0. CLASSIC consumers only (dp_sub_flag_start != 1) — DashPass excluded.
 --   1. Consumers with L365D orders BETWEEN 50 AND 100.
 --   2. Exclude the top 10% LEAST price-sensitive consumers (drop the lowest-
 --      sensitivity decile of the cohort).
@@ -33,16 +34,17 @@
 SET snap = '2026-07-01';
 
 WITH
--- (1) Cohort: US, tenured, L365D orders in [50, 100], @ snapshot.
+-- (1) Cohort: US, Classic-only, tenured, L365D orders in [50, 100], @ snapshot.
 cohort AS (
     SELECT
         ca.creator_id,
-        CASE WHEN ca.dp_sub_flag_start = 1 THEN 'DashPass' ELSE 'Classic' END AS consumer_type,
+        'Classic' AS consumer_type,
         ca.l360_orders AS l365d_orders,
         ca.l28_orders
     FROM proddb.mattheitz.mh_customer_authority ca
     WHERE ca.dte = $snap::DATE
       AND ca.acquisition_country_id = 1
+      AND ca.dp_sub_flag_start IS DISTINCT FROM 1   -- Classic only (DashPass excluded; NULL -> Classic)
       AND ca.days_since_first_purchase > 0
       AND ca.l360_orders BETWEEN 50 AND 100
 ),
@@ -120,27 +122,12 @@ GROUP BY 1
 ORDER BY 1;
 
 -- =============================================================================
--- VALIDATED RESULT — run 2026-07-07 (snapshot = 2026-07-01), role KATEZ / ADHOC.
+-- CLASSIC-ONLY cohort size (snapshot 2026-07-01): 2,374,213 cx (100% v3-scored).
+-- Validated result numbers pending the Classic-only re-run (2026-07-07).
 --
--- Funnel:
---   Step 1  L365D orders 50-100 (US, tenured) ............ 7,312,834 cx
---             (Classic 2,374,213 + DashPass 4,938,621; 100% have a v3 score)
---   Step 2  after excluding least-sensitive decile (-10%) . ~6,581,550 cx
---   Step 3  with L180D baseline AND >=50% L28D weekly drop . 1,700,351 cx
---
--- Consumers by L180D weekly OF band (the decelerated 1,700,351):
---   L180D weekly band | Cx| % of Cx
---   ------------------+-----------+------------------
---   1. 0-1            |   562,059 |   33.06%
---   2. 1-2            |   952,094 |   55.99%
---   3. 2-3            |   173,367 |   10.20%
---   4. 3-4            |    12,830 |    0.75%
---   5. 4+            |         1 |    0.00%
---   ------------------+-----------+------------------
---   TOTAL             | 1,700,351 |  100.00%
---
--- Note: the 3-4 / 4+ bands are near-empty by construction — the cohort is capped
--- at 100 L365D orders (~1.9/wk), so an L180D weekly rate >=4 (>=~103 orders in
--- 180d) is essentially impossible. This validates the windowing.
+-- For reference, the ALL-CONSUMER run (Classic + DashPass, 7,312,834 cohort)
+-- produced 1,700,351 decelerating cx: 0-1 =562,059 / 1-2 =952,094 /
+-- 2-3 =173,367 / 3-4 =12,830 / 4+ =1. The 3-4 / 4+ bands are near-empty by
+-- construction (cohort capped at 100 L365D orders ~1.9/wk).
 -- =============================================================================
 
