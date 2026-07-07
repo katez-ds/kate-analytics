@@ -129,7 +129,7 @@ ORDER BY 1;
 --   Step 3  with L180D baseline AND >=50% L28D weekly drop . 1,700,351 cx
 --
 -- Consumers by L180D weekly OF band (the decelerated 1,700,351):
---   L180D weekly band | consumers | % of decelerating
+--   L180D weekly band | Cx| % of Cx
 --   ------------------+-----------+------------------
 --   1. 0-1            |   562,059 |   33.06%
 --   2. 1-2            |   952,094 |   55.99%
