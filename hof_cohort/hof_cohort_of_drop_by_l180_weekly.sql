@@ -115,8 +115,8 @@ decel AS (
 
 SELECT
     l180_weekly_band,
-    COUNT(*)                                        AS consumers,
-    COUNT(*) * 1.0 / SUM(COUNT(*)) OVER ()          AS pct_of_decelerating
+    COUNT(*)                                        AS cx,
+    COUNT(*) * 1.0 / SUM(COUNT(*)) OVER ()          AS pct_of_cx
 FROM decel
 GROUP BY 1
 ORDER BY 1;
@@ -131,3 +131,8 @@ ORDER BY 1;
 -- construction (cohort capped at 100 L365D orders ~1.9/wk).
 -- =============================================================================
 
+L180_WEEKLY_BAND	CX	PCT_OF_CX
+1. 0-1	323912	0.416502
+2. 1-2	384949	0.494986
+3. 2-3	63817	0.082059
+4. 3-4	5019	0.006454
