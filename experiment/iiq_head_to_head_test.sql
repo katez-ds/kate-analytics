@@ -1,3 +1,29 @@
+CREATE OR REPLACE TABLE yingxie.exposed_cx_crm_late_bloomers AS
+SELECT e.campaign_analyzer_id
+     , CASE
+           WHEN e.campaign_country = 'AU'
+               THEN 'AUS'
+           WHEN e.campaign_country = 'CA'
+               THEN 'CAN'
+           ELSE e.campaign_country END AS campaign_country_final
+     , CASE
+           WHEN e.campaign_vertical = 'Convenience 3P'
+               THEN 'convenience'
+           ELSE campaign_vertical END AS campaign_vertical_final
+     , CONCAT(campaign_country_final, '-', campaign_vertical_final, '-', business_campaign_name) AS campaign_key
+     , e.campaign_name
+     , e.consumer_bucket
+     , e.consumer_id
+     , is_control_flg
+     , MIN(e.start_time_derived::DATE) AS start_time_derived
+     , MIN(e.cohort_week_date::DATE) AS cohort_week_date_start
+     , MIN(e.end_time_derived::DATE) AS end_time_derived
+FROM edw.consumer.campaign_analyzer_exposures e
+WHERE campaign_name = 'ep_consumer_dormant_late_bloomers_us_v1_t1'
+  AND campaign_country_final = 'US'
+GROUP BY ALL
+;
+
 with be as (
 select 
 case when wbd.tag_renamed = 'Control' then 'Control'
