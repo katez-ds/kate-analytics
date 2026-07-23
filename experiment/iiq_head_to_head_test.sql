@@ -68,6 +68,7 @@ join (
   select * from (values
     ('ep_consumer_usmp_resurrection_rev_v2_dewo',                date '2026-04-10'),
     ('ep_consumer_usmp_resurrection_rev_v2_dealseekers',  date '2026-04-10'),
+    ('ep_consumer_new_dormant_prevention_us_v1',  date '2026-01-28'),
     --('ep_consumer_usmp_resurrection_rev_v2_organiccore_nonmon',  date '2026-04-10'),
     ('ep_consumer_usmp_resurrection_rev_v2_cewo',                 date '2026-04-10'),
     ('ep_consumer_usmp_resurrection_rev_v2_lowfrequencyresurrection', date '2026-04-10')
