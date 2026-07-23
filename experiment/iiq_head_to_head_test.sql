@@ -18,7 +18,7 @@ where event_date = '2026-06-01'
 group by 1
 order by distinct_cx desc
 
--- ORIGAMI IIQ head-to-head readout — sheet "IIQ H2H ORIGAMI Test Sizing" rows 5-8
+-- ORIGAMI IIQ head-to-head readout - sheet "IIQ H2H ORIGAMI Test Sizing" rows 5-8
 -- (Inactive / resurrection_rev_v2 family): DEWO, non-monetary (organiccore_nonmon),
 -- CEWO, Low frequency resurrection.
 --
@@ -47,6 +47,10 @@ order by distinct_cx desc
 --      treatment arms into 1 rather than keeping them separate.
 --   6) Table renamed dv_name (was campaign_name) and created under katez schema
 --      (was yingxie) per instruction.
+--   7) "DV Spending" = affordability spend during the analysis window (not a "Q1 Spend"
+--      style budget figure), sourced from proddb.static.df_sf_promo_discount_delivery_level
+--      per reference (promo_orders_overlap.sql): TOTAL_FEE_PROMO_DISCOUNT, which covers
+--      all 3 affordability programs (WBD+CS+PAD), joined on delivery_id.
 --
 -- NOT included yet: the 2 "Active" DVs (Dormant Prevention, Post resurrection -- sheet
 -- rows 2-3) and Dealseeker (row 4, multi-arm treatment2/3) -- rows 2-3 are still rolling
@@ -107,16 +111,6 @@ join proddb.static.us_universal_dv_a_be dv on crm.consumer_id = dv.user_id
     and ("GROUP" != 'subscription')
   group by 1
 )
-, dv_promo as (
-  select
-    order_cart_id,
-    sum(amount) / 100.0 AS total_promo_amount
-  from proddb.public.maindblocal_order_cart_discount_component ocdc
-  where monetary_field = 'delivery_fee'
-  and ocdc.created_at >= dateadd(day, -7, date '2026-04-10')
-  and lower(status) = 'applied'
-  group by 1
-)
 , core_dd as (
     select
     is_subscribed_consumer::int as dashpass
@@ -154,14 +148,14 @@ join proddb.static.us_universal_dv_a_be dv on crm.consumer_id = dv.user_id
   , dd.SUBMARKET_ID
   , dd.SUBMARKET_NAME
   , dd.IS_SUBSCRIPTION_DISCOUNT_APPLIED::int as dashpass_eligible
-  , case when nv.store_id is null then coalesce(dv_promo.total_promo_amount, 0) else 0 end as dv_promo_amount
+  , case when nv.store_id is null then coalesce(affd.total_fee_promo_discount, 0) else 0 end as dv_promo_amount
   from edw.finance.dimension_deliveries dd
   left join fact_delivery_allocation fda on dd.delivery_id = fda.delivery_id
   left join edw.cng.dimension_new_vertical_store_tags as nv on dd.store_id = nv.store_id and nv.is_filtered_mp_vertical = 1
   left join delivery_fee_promo_discounts dfd on dd.order_cart_id = dfd.order_cart_id
   left join service_fee_promo_discounts sfd on dd.order_cart_id = sfd.order_cart_id
   left join public.fact_delivery_distances fdd on fdd.delivery_id = dd.delivery_id
-  left join dv_promo on dd.order_cart_id = dv_promo.order_cart_id
+  left join proddb.static.df_sf_promo_discount_delivery_level affd on dd.delivery_id = affd.delivery_id
 where dd.is_filtered_core = True
  and dd.created_at >= date '2026-04-10'
  and dd.created_at <= date '2026-04-10' + 90
