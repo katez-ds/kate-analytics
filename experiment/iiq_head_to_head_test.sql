@@ -1,11 +1,11 @@
-—- total unique US-eligible Cx on a given day:
+## total unique US-eligible Cx on a given day:
 select count(distinct consumer_id) as total_eligible_cx
 from proddb.ml.discount_engine_log_v1
 where event_date = '2026-06-01'
   and country_id = 1
   and (is_df_discount_eligible or is_zero_df_eligible or is_sf_discount_eligible)
 
-—- breakdown by MODEL_ID and eligibility flag:
+## breakdown by MODEL_ID and eligibility flag:
 select
   model_id,
   count(distinct consumer_id) as distinct_cx,
@@ -67,7 +67,8 @@ from proddb.public.fact_dedup_experiment_exposure e
 join (
   select * from (values
     ('ep_consumer_usmp_resurrection_rev_v2_dewo',                date '2026-04-10'),
-    ('ep_consumer_usmp_resurrection_rev_v2_organiccore_nonmon',  date '2026-04-10'),
+    ('ep_consumer_usmp_resurrection_rev_v2_dealseekers',  date '2026-04-10'),
+    --('ep_consumer_usmp_resurrection_rev_v2_organiccore_nonmon',  date '2026-04-10'),
     ('ep_consumer_usmp_resurrection_rev_v2_cewo',                 date '2026-04-10'),
     ('ep_consumer_usmp_resurrection_rev_v2_lowfrequencyresurrection', date '2026-04-10')
   ) as t(dv_name, launch_date)
