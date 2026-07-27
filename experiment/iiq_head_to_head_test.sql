@@ -91,42 +91,76 @@ order by distinct_cx desc
 --      MIN(exposure_time::date) per user (their own first exposure), end_time_derived
 --      = that + window_days -- genuinely per-user now, enrollment filter unchanged.
 --
--- NOT included yet: Dormant Prevention (row 4) -- still rolling, not yet mature at
--- any usable window length.
+--   9) REWRITE (2026-07-24): now pulls population + real per-user dates DIRECTLY from
+--      edw.consumer.campaign_analyzer_exposures, mirroring old_iiq_head_to_head_test.sql's
+--      CREATE TABLE exactly -- no more fact_dedup_experiment_exposure join for this step.
+--      This table WAS confirmed to have these DVs (item 1 above was wrong) -- it's just
+--      keyed on a different `campaign_name` value than the DV/experiment name, found via
+--      population-overlap analysis (2026-07-24), not name-guessing:
+--        dewo -> 'dewo', cewo -> 'cewo', low-freq -> 'low_frequency_resurrection',
+--        dealseeker -> 'deal_seekers_resurrection',
+--        dormant prevention -> 'ep_consumer_new_dormant_prevention_us_q325_tC_split_4',
+--        post resurrection -> 'ep_consumer_active_post_resurrection_us_t1'/'_t2'/'_t3'
+--      is_control_flg = 0 replaces all the tag/segment special-casing (treatmentC-only,
+--      segment='All Users', etc.) -- this table's own control flag is a clean binary,
+--      no visibility into fact_dedup's sub-arm tags needed.
+--      launch_date/window_days are KEPT (per instruction) as (a) the ENROLLMENT filter
+--      -- only include users whose REAL start_time_derived falls in [launch_date,
+--      launch_date + window_days] -- and (b) an UPPER BOUND on end_time_derived, not a
+--      replacement for it: end_time_derived = LEAST(real end_time_derived from this
+--      table, start_time_derived + window_days) -- i.e. if the real measurement period
+--      is shorter than your window_days, use the real (shorter) one; if it would run
+--      longer, cap it at window_days. start_time_derived is always each user's own real
+--      date (never a shared literal) -- this is what avoids re-introducing the item-8
+--      shared-window bug.
+--
+-- NOT included yet: Dormant Prevention... actually now included (see above); FMX not
+-- yet added (no launch date confirmed for fmx_core_challenges_test_q225).
 
+--  10) MULTI-WINDOW (2026-07-25): switched from "first window only" (GROUP BY +
+--      MIN()) to "every distinct, non-overlapping eligibility window is its own
+--      observation" (per instruction -- "option 2"). CEWO (~40% of pop) and
+--      Dealseeker (~19%) have consumers with genuine multiple re-entry windows within
+--      the analysis period (confirmed via gap analysis 2026-07-24); the other 4 DVs
+--      have exactly one window per consumer, so this is a no-op for them. `SELECT
+--      DISTINCT` (not GROUP BY) preserves each distinct (start, end) pair per
+--      consumer instead of collapsing to MIN(). Everything downstream (comb/cx_cnt/
+--      pen) already generalizes correctly to multiple rows per consumer with no
+--      further changes: cx_cnt's COUNT(DISTINCT user_id) dedupes population count
+--      regardless of row count, and comb's per-row date-range join can't double-count
+--      a single order across two windows since they're non-overlapping by construction.
 CREATE OR REPLACE TABLE katez.exposed_cx_crm_origami_cohorts AS
 select
-  e.experiment_name as dv_name,
-  try_cast(e.bucket_key as integer) as consumer_id,
-  min(e.exposure_time::date) as start_time_derived,
-  min(e.exposure_time::date) + max(dl.window_days) as end_time_derived
-from proddb.public.fact_dedup_experiment_exposure e
-join (
-  select * from (values
-    ('ep_consumer_usmp_resurrection_rev_v2_dewo',                date '2026-04-10', 90),
-    -- ('ep_consumer_usmp_resurrection_rev_v2_organiccore_nonmon',  date '2026-04-10', 90),  -- commented out: no matching row in sheet currently
-    ('ep_consumer_usmp_resurrection_rev_v2_cewo',                 date '2026-04-10', 90),
-    ('ep_consumer_usmp_resurrection_rev_v2_lowfrequencyresurrection', date '2026-04-10', 90),
-    ('ep_consumer_usmp_resurrection_rev_v2_dealseekers',          date '2026-04-10', 90),
-    ('ep_consumer_new_dormant_prevention_us_v1',                  date '2026-03-12', 60),
-    ('ep_consumer_active_post_resurrection_us',                   date '2026-05-30', 30)
-  ) as t(dv_name, launch_date, window_days)
-) dl on dl.dv_name = e.experiment_name
-where (
-    (e.experiment_name = 'ep_consumer_new_dormant_prevention_us_v1' and e.segment = 'All Users')
-    or
-    (e.experiment_name != 'ep_consumer_new_dormant_prevention_us_v1' and e.segment = 'Users')
-  )
-  -- ^ this DV uses segment = 'All Users', not 'Users' like the others (confirmed
-  --   2026-07-23 -- 'Users' matched ZERO rows for it, 'All Users' matches 4.01M)
-  and (
-    (e.experiment_name != 'ep_consumer_new_dormant_prevention_us_v1' and e.tag not ilike '%control%')
-    or
-    (e.experiment_name = 'ep_consumer_new_dormant_prevention_us_v1' and e.tag = 'treatmentC')
-  )
-  and try_cast(e.bucket_key as integer) is not null
-  and e.exposure_time::date between dl.launch_date and dl.launch_date + dl.window_days
-group by 1, 2
+  dv_name,
+  consumer_id,
+  start_time_derived,
+  -- window_days is an UPPER BOUND, not a replacement: use the real end_time_derived
+  -- if it's shorter, otherwise cap at start_time_derived + window_days.
+  least(real_end_time_derived, start_time_derived + window_days) as end_time_derived
+from (
+  select distinct
+    dl.dv_name,
+    e.consumer_id,
+    e.start_time_derived::date as start_time_derived,
+    e.end_time_derived::date as real_end_time_derived,
+    dl.window_days
+  from edw.consumer.campaign_analyzer_exposures e
+  join (
+    select * from (values
+      ('ep_consumer_usmp_resurrection_rev_v2_dewo',                'dewo',                                                  date '2026-04-10', 90),
+      ('ep_consumer_usmp_resurrection_rev_v2_cewo',                 'cewo',                                                  date '2026-04-10', 90),
+      ('ep_consumer_usmp_resurrection_rev_v2_lowfrequencyresurrection', 'low_frequency_resurrection',                        date '2026-04-10', 90),
+      ('ep_consumer_usmp_resurrection_rev_v2_dealseekers',          'deal_seekers_resurrection',                             date '2026-04-10', 90),
+      ('ep_consumer_new_dormant_prevention_us_v1',                  'ep_consumer_new_dormant_prevention_us_q325_tC_split_4', date '2026-03-12', 60),
+      ('ep_consumer_active_post_resurrection_us',                   'ep_consumer_active_post_resurrection_us_t1',           date '2026-05-30', 30),
+      ('ep_consumer_active_post_resurrection_us',                   'ep_consumer_active_post_resurrection_us_t2',           date '2026-05-30', 30),
+      ('ep_consumer_active_post_resurrection_us',                   'ep_consumer_active_post_resurrection_us_t3',           date '2026-05-30', 30)
+    ) as t(dv_name, analyzer_campaign_name, launch_date, window_days)
+  ) dl on dl.analyzer_campaign_name = e.campaign_name
+  where e.is_control_flg = 0
+    and e.campaign_country = 'US'
+    and e.start_time_derived::date between dl.launch_date and dl.launch_date + dl.window_days
+)
 ;
 
 with be as (
