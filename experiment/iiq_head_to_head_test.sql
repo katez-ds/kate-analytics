@@ -290,17 +290,40 @@ select
 from be
 group by 1, 2
 )
+--  11) FIRST 28D MAU (2026-08-03): whether a user placed >=1 order in the first 28 days
+--      after their own eligibility start (start_time_derived) -- [start, start+28].
+--      Every DV's window_days (30/60/90D) is >=28, so this always stays inside the
+--      existing in-campaign window/core_dd bound -- no separate date extension needed.
+, first28_activity as (
+  select distinct
+    a.dv_name,
+    a.tag_renamed,
+    a.user_id
+  from be a
+  join core_dd c on c.creator_id = a.user_id
+    and c.created_at between a.start_time_derived and a.start_time_derived + 28
+)
+, first28_cnt as (
+  select
+    dv_name,
+    tag_renamed,
+    count(distinct user_id) as first28_active_cx
+  from first28_activity
+  group by 1, 2
+)
 , comb as(
 select
   a.dv_name
 , a.tag_renamed
 , a.user_id as consumer_id
 , cc.total_cx
+, fc.first28_active_cx
 , c.*
 , case when c.campaign_business_campaign = dcm.campaign_business_campaign then c.crm_discount_amount else 0 end as own_campaign_crm_discount_amount
 from be a
 left join core_dd c on c.creator_id = a.user_id AND c.created_at between a.start_time_derived and a.end_time_derived
 left join cx_cnt cc on cc.dv_name = a.dv_name and cc.tag_renamed = a.tag_renamed
+left join first28_cnt fc on fc.dv_name = a.dv_name and fc.tag_renamed = a.tag_renamed
 left join dv_campaign_map dcm on dcm.dv_name = a.dv_name
 )
 
@@ -309,6 +332,7 @@ left join dv_campaign_map dcm on dcm.dv_name = a.dv_name
     dv_name
   , tag_renamed as "Bucket"
   , total_cx as "# Cx"
+  , max(first28_active_cx) / nullif(total_cx, 0) as "First 28D MAU"
   , count(distinct delivery_id) as "Volume"
   , "# Cx" / sum("# Cx") over (partition by dv_name) as "Bucketing %"
   , "Volume"/nullif("# Cx",0) as "Order Rate"
@@ -340,6 +364,8 @@ select
 , "Bucket"
 , "# Cx"
 , "Volume"
+, "First 28D MAU"
+, "First 28D MAU" - max(case when "Bucket" = 'Control' then "First 28D MAU" end) over (partition by dv_name) as "First 28D MAU Delta"
 , "Order Rate" / max(case when "Bucket" = 'Control' then "Order Rate" end) over (partition by dv_name) - 1 as "Order Rate Lift"
 , "DV Spending"
 , "CRM Spend (Any Campaign)"
@@ -359,3 +385,4 @@ select
 from pen
 order by 1, 2
 ;
+
