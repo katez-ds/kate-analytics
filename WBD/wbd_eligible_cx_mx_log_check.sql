@@ -23,11 +23,11 @@ select
   count(distinct case when d.is_df_discount_eligible then d.consumer_id end) as df_discount_eligible_cx,
   count(distinct case when d.is_zero_df_eligible then d.consumer_id end) as zero_df_eligible_cx,
   count(distinct case when d.is_sf_discount_eligible then d.consumer_id end) as sf_discount_eligible_cx,
-  count(distinct case when d.is_df_discount_eligible then d.store_id end) as df_eligible_merchants,
-  div0(count(distinct case when d.is_df_discount_eligible then d.store_id end),
+  count(distinct case when d.is_df_discount_eligible then d.consumer_id || '-' || d.store_id end) as df_eligible_cx_merchant_pairs,
+  div0(count(distinct case when d.is_df_discount_eligible then d.consumer_id || '-' || d.store_id end),
        count(distinct case when d.is_df_discount_eligible then d.consumer_id end)) as df_eligible_merchants_per_user,
-  count(distinct case when d.is_zero_df_eligible then d.store_id end) as zero_df_eligible_merchants,
-  div0(count(distinct case when d.is_zero_df_eligible then d.store_id end),
+  count(distinct case when d.is_zero_df_eligible then d.consumer_id || '-' || d.store_id end) as zero_df_eligible_cx_merchant_pairs,
+  div0(count(distinct case when d.is_zero_df_eligible then d.consumer_id || '-' || d.store_id end),
        count(distinct case when d.is_zero_df_eligible then d.consumer_id end)) as zero_df_eligible_merchants_per_user
 from be
 join proddb.ml.discount_engine_log_v1 d
