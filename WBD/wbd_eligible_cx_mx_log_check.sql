@@ -12,7 +12,7 @@ join proddb.public.fact_unique_visitors_full_UTC b
     and country_name = 'United States'
 where experiment_name = 'discount_engine_us_wbd_v2'
       and experiment_version >=0
-      and exposure_time between '2026-07-29'
+      and exposure_time::date >= '2026-07-29'
       and segment = 'Users'
       and RESULT is not null
 GROUP BY 1, 2, 3
@@ -31,5 +31,6 @@ join proddb.ml.discount_engine_log_v1 d
   on be.user_id = d.consumer_id
 where d.model_id = 'discount_engine_m0_us_fee_and_deal_layer_v1_1'
   and d.country_id = 1
+  and event_date::date >= '2026-07-29'
 group by 1
 order by distinct_cx desc;
